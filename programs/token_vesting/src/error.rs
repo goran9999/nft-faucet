@@ -14,4 +14,6 @@ pub enum VestmenErrors {
     WrongDestinationMint,
     #[msg("Vestment not started yet!")]
     VestmentNotStarted,
+    #[msg("All tokens already claimed")]
+    TokensClaimed,
 }

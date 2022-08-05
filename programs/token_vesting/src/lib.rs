@@ -14,10 +14,23 @@ pub mod token_vesting {
     pub fn initialize_vestmet(
         ctx: Context<InitializeVestment>,
         amount: u64,
-        duration: i64,
-        cliff: i64,
+        release_amount: u64,
+        vestment_start: i64,
+        vestment_end: i64,
+        release_period: i64,
+        cliff_start: Option<i64>,
+        cliff_percentage: Option<u8>,
     ) -> Result<()> {
-        return instructions::initialize_vestmet(ctx, amount, duration, cliff);
+        return instructions::initialize_vestmet(
+            ctx,
+            amount,
+            release_amount,
+            vestment_start,
+            vestment_end,
+            release_period,
+            cliff_start,
+            cliff_percentage,
+        );
     }
 
     pub fn claim_vested_tokens(ctx: Context<ClaimVestedTokens>) -> Result<()> {

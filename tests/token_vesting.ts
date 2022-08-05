@@ -14,6 +14,7 @@ import {
 import { sendTransaction } from "../programs/token_vesting/src/helpers/transaction";
 import { assert } from "chai";
 import { BN } from "bn.js";
+import dayjs from "dayjs";
 describe("token_vesting", () => {
   // Configure the client to use the local cluster.
   anchor.setProvider(anchor.AnchorProvider.env());
@@ -32,7 +33,7 @@ describe("token_vesting", () => {
   });
 
   beforeEach(function (done) {
-    setTimeout(done, 5000);
+    setTimeout(done, 6000);
   });
 
   it("should mint token to account!", async () => {
@@ -74,7 +75,11 @@ describe("token_vesting", () => {
 
   it("should initialize vesting", async () => {
     const [vestmentData] = await PublicKey.findProgramAddress(
-      [Buffer.from("vestment"), wallet.publicKey.toBuffer()],
+      [
+        Buffer.from("vestment"),
+        wallet.publicKey.toBuffer(),
+        consumer.publicKey.toBuffer(),
+      ],
       program.programId
     );
     const [vestedTokens] = await PublicKey.findProgramAddress(
@@ -82,15 +87,28 @@ describe("token_vesting", () => {
       program.programId
     );
 
+    const vestmentStartUnix = dayjs().unix();
+    console.log(vestmentStartUnix, "START");
+
+    const vesmentEndUnix = dayjs().add(3, "minutes").unix();
+    console.log(mint, "MINT");
+    console.log(vesmentEndUnix, "END");
+
+    const cliffStart = dayjs().add(2, "seconds").unix();
+
     const initializeVestingIx = program.instruction.initializeVestmet(
-      new BN(25000),
-      new BN(3600),
+      new BN(90),
+      new BN(10),
+      new BN(vestmentStartUnix),
+      new BN(vesmentEndUnix),
       new BN(1),
+      new BN(cliffStart),
+      100,
       {
         accounts: {
           consumer: consumer.publicKey,
           sourceTokenAccount: tokenAccount.address,
-          vestedMint: mint,
+          vestmentMint: mint,
           vestor: wallet.publicKey,
           vestedTokens,
           vestmentData,
@@ -101,11 +119,20 @@ describe("token_vesting", () => {
         },
       }
     );
-    await sendTransaction(connection, [initializeVestingIx], [wallet], wallet);
+    try {
+      await sendTransaction(
+        connection,
+        [initializeVestingIx],
+        [wallet],
+        wallet
+      );
+    } catch (error) {
+      console.log(error);
+    }
     const vestmentAccount = await program.account.vestmentData.fetch(
       vestmentData
     );
-    assert.equal(vestmentAccount.amount.toNumber(), 25000, "Vesting amount");
+    assert.equal(vestmentAccount.amount.toNumber(), 90, "Vesting amount");
     assert.equal(
       vestmentAccount.vestmentMint.toString(),
       mint.toString(),
@@ -129,7 +156,11 @@ describe("token_vesting", () => {
     );
     await connection.confirmTransaction(airdropIx);
     const [vestmentData] = await PublicKey.findProgramAddress(
-      [Buffer.from("vestment"), wallet.publicKey.toBuffer()],
+      [
+        Buffer.from("vestment"),
+        wallet.publicKey.toBuffer(),
+        consumer.publicKey.toBuffer(),
+      ],
       program.programId
     );
     const [vestedTokens] = await PublicKey.findProgramAddress(
@@ -145,7 +176,7 @@ describe("token_vesting", () => {
       mint,
       consumer.publicKey
     );
-    console.log(consumerTA.toBase58(), "CONSUMER TA");
+
     const claimIx = program.instruction.claimVestedTokens({
       accounts: {
         consumer: consumer.publicKey,
@@ -158,15 +189,19 @@ describe("token_vesting", () => {
         tokenProgram: TOKEN_PROGRAM_ID,
       },
     });
-    await sendTransaction(connection, [claimIx], [consumer], consumer);
+    try {
+      await sendTransaction(connection, [claimIx], [consumer], consumer);
+    } catch (error) {
+      console.log(error);
+    }
     const consumerTaBalance = await connection.getParsedTokenAccountsByOwner(
       consumer.publicKey,
       { mint: vestmentDataAccount.vestmentMint }
     );
     console.log(consumerTaBalance.value[0].account.data.parsed);
-    assert.isAbove(
+    assert.isAtLeast(
       +consumerTaBalance.value[0].account.data.parsed.info.tokenAmount.amount,
-      3,
+      20,
       "Claimed more than 3 tokens"
     );
   });
