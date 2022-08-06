@@ -16,4 +16,6 @@ pub enum VestmenErrors {
     VestmentNotStarted,
     #[msg("All tokens already claimed")]
     TokensClaimed,
+    #[msg("Not allowed to cancel vesting")]
+    WrongCancelAuthority,
 }

@@ -65,7 +65,7 @@ describe("token_vesting", () => {
       mint,
       tokenAccount.address,
       wallet.publicKey,
-      40000,
+      90,
       6
     );
     await sendTransaction(connection, [mintIx], [wallet], wallet);
@@ -75,7 +75,7 @@ describe("token_vesting", () => {
     );
     assert.equal(
       +createdTokenAccount.value[0].account.data.parsed.info.tokenAmount.amount,
-      40000
+      90
     );
   });
 
@@ -102,14 +102,18 @@ describe("token_vesting", () => {
 
     const cliffStart = dayjs().add(2, "seconds").unix();
 
+    const remainingAccounts = [
+      { isSigner: false, isWritable: false, pubkey: wallet.publicKey },
+    ];
+
     const initializeVestingIx = program.instruction.initializeVestmet(
       new BN(90),
-      new BN(2.5),
+      new BN(5),
       new BN(vestmentStartUnix),
       new BN(vesmentEndUnix),
       new BN(1),
       new BN(cliffStart),
-      new BN(3.5),
+      new BN(7),
       {
         accounts: {
           consumer: consumer.publicKey,
@@ -123,6 +127,7 @@ describe("token_vesting", () => {
           systemProgram: anchor.web3.SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
         },
+        remainingAccounts: remainingAccounts,
       }
     );
     try {
@@ -257,6 +262,55 @@ describe("token_vesting", () => {
       +consumerTaBalance2.value[0].account.data.parsed.info.tokenAmount.amount,
       0,
       "Second claim successfully executed"
+    );
+  });
+
+  it("should cancel vesting by vestor", async () => {
+    const [vestmentData] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("vestment"),
+        wallet.publicKey.toBuffer(),
+        consumer.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+    const [vestedTokens] = await PublicKey.findProgramAddress(
+      [Buffer.from("vestment"), mint.toBuffer()],
+      program.programId
+    );
+
+    const cancelVestmentIx = program.instruction.cancelVestment({
+      accounts: {
+        payer: wallet.publicKey,
+        sourceTokenAccount: tokenAccount.address,
+        systemProgam: anchor.web3.SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        vestedTokens: vestedTokens,
+        vestmentData: vestmentData,
+        vestmentMint: mint,
+      },
+    });
+    try {
+      await sendTransaction(connection, [cancelVestmentIx], [wallet], wallet);
+    } catch (error) {
+      console.log(error);
+    }
+    const vestorTa = await connection.getParsedTokenAccountsByOwner(
+      wallet.publicKey,
+      { mint: mint }
+    );
+    console.log(vestorTa.value[0].account.data.parsed.info);
+    const vestmentDataAcc = await program.account.vestmentData.fetch(
+      vestmentData
+    );
+
+    console.log(vestmentDataAcc.withdrawnAmount.toNumber(), "WITHDRAWN AMOUNT");
+    console.log(vestmentDataAcc.amount.toNumber(), "AMOUN");
+
+    assert.equal(
+      +vestorTa.value[0].account.data.parsed.info.tokenAmount.amount,
+      vestmentDataAcc.withdrawnAmount.toNumber(),
+      "Tokens withdrawed"
     );
   });
 });

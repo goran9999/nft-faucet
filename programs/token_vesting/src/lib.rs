@@ -36,4 +36,8 @@ pub mod token_vesting {
     pub fn claim_vested_tokens(ctx: Context<ClaimVestedTokens>) -> Result<()> {
         return instructions::claim_vested_tokens(ctx);
     }
+
+    pub fn cancel_vestment(ctx: Context<CancelVestment>) -> Result<()> {
+        return instructions::cancel_vestment(ctx);
+    }
 }
