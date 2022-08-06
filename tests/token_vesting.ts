@@ -22,18 +22,24 @@ describe("token_vesting", () => {
   const program = anchor.workspace.TokenVesting as Program<TokenVesting>;
   const connection = anchor.getProvider().connection;
   const timeoutFn = async (waitMs) =>
-    new Promise((resolve) => setTimeout(() => {}, waitMs));
+    new Promise(() =>
+      setTimeout(() => {
+        {
+        }
+      }, waitMs)
+    );
   let mint: PublicKey | undefined;
   let wallet: Keypair | undefined;
   let tokenAccount: Account | undefined;
   let consumer: Keypair | undefined;
+  let consumerTA: PublicKey | undefined;
   before(async () => {
     wallet = Keypair.generate();
     consumer = Keypair.generate();
   });
 
   beforeEach(function (done) {
-    setTimeout(done, 6000);
+    setTimeout(done, 4000);
   });
 
   it("should mint token to account!", async () => {
@@ -47,7 +53,7 @@ describe("token_vesting", () => {
       wallet,
       wallet.publicKey,
       wallet.publicKey,
-      9
+      6
     );
     tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
@@ -60,7 +66,7 @@ describe("token_vesting", () => {
       tokenAccount.address,
       wallet.publicKey,
       40000,
-      9
+      6
     );
     await sendTransaction(connection, [mintIx], [wallet], wallet);
     const createdTokenAccount = await connection.getParsedTokenAccountsByOwner(
@@ -98,12 +104,12 @@ describe("token_vesting", () => {
 
     const initializeVestingIx = program.instruction.initializeVestmet(
       new BN(90),
-      new BN(10),
+      new BN(2.5),
       new BN(vestmentStartUnix),
       new BN(vesmentEndUnix),
       new BN(1),
       new BN(cliffStart),
-      100,
+      new BN(3.5),
       {
         accounts: {
           consumer: consumer.publicKey,
@@ -170,7 +176,7 @@ describe("token_vesting", () => {
     const vestmentDataAccount = await program.account.vestmentData.fetch(
       vestmentData
     );
-    const consumerTA = await createAssociatedTokenAccount(
+    consumerTA = await createAssociatedTokenAccount(
       connection,
       consumer,
       mint,
@@ -201,8 +207,56 @@ describe("token_vesting", () => {
     console.log(consumerTaBalance.value[0].account.data.parsed);
     assert.isAtLeast(
       +consumerTaBalance.value[0].account.data.parsed.info.tokenAmount.amount,
-      20,
-      "Claimed more than 3 tokens"
+      0,
+      "First claim successfully executed"
+    );
+  });
+
+  it("should claim for second time", async () => {
+    const [vestmentData] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("vestment"),
+        wallet.publicKey.toBuffer(),
+        consumer.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+    const [vestedTokens] = await PublicKey.findProgramAddress(
+      [Buffer.from("vestment"), mint.toBuffer()],
+      program.programId
+    );
+    const vestmentDataAccount = await program.account.vestmentData.fetch(
+      vestmentData
+    );
+    const claimIx = program.instruction.claimVestedTokens({
+      accounts: {
+        consumer: consumer.publicKey,
+        destinationTokenAccount: consumerTA,
+        vestedTokens: vestedTokens,
+        vestmentData: vestmentData,
+        vestmentMint: vestmentDataAccount.vestmentMint,
+        vestor: vestmentDataAccount.vestor,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      },
+    });
+    try {
+      await sendTransaction(connection, [claimIx], [consumer], consumer);
+    } catch (error) {
+      console.log(error);
+    }
+
+    const consumerTaBalance2 = await connection.getParsedTokenAccountsByOwner(
+      consumer.publicKey,
+      { mint: vestmentDataAccount.vestmentMint }
+    );
+
+    console.log(consumerTaBalance2.value[0].account.data.parsed.info);
+
+    assert.isAtLeast(
+      +consumerTaBalance2.value[0].account.data.parsed.info.tokenAmount.amount,
+      0,
+      "Second claim successfully executed"
     );
   });
 });

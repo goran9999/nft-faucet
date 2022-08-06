@@ -19,7 +19,7 @@ pub mod token_vesting {
         vestment_end: i64,
         release_period: i64,
         cliff_start: Option<i64>,
-        cliff_percentage: Option<u8>,
+        cliff_percentage: Option<u64>,
     ) -> Result<()> {
         return instructions::initialize_vestmet(
             ctx,

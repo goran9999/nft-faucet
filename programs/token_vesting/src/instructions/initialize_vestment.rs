@@ -33,7 +33,7 @@ pub fn initialize_vestmet(
     vestment_end: i64,
     release_period: i64,
     cliff_start: Option<i64>,
-    cliff_percentage: Option<u8>,
+    cliff_percentage: Option<u64>,
 ) -> Result<()> {
     let vestment_data = &mut ctx.accounts.vestment_data;
     vestment_data.amount = amount;
@@ -43,11 +43,14 @@ pub fn initialize_vestmet(
     vestment_data.vestment_start = vestment_start;
     vestment_data.vestment_end = vestment_end;
     vestment_data.cliff_date = cliff_start;
-    vestment_data.cliff_percentage = cliff_percentage;
     vestment_data.release_amount = release_amount;
     vestment_data.release_time = release_period;
     vestment_data.has_cliffed = false;
-    msg!("Mint {}", vestment_data.vestment_mint);
+
+    vestment_data.cliff_release_amount = match cliff_percentage {
+        Some(amount) => amount,
+        None => 0,
+    };
 
     let accounts_iter = &mut ctx.remaining_accounts.iter();
     let vestor_authority = match next_account_info(accounts_iter) {

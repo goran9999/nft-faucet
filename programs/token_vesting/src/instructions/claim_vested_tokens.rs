@@ -30,16 +30,14 @@ pub fn claim_vested_tokens(ctx: Context<ClaimVestedTokens>) -> Result<()> {
     if current_timestapm > vestment_data.vestment_end {
         current_timestapm = vestment_data.vestment_end;
     }
-    let withdraw_start = match vestment_data.cliff_date {
-        Some(cliff_date) => {
-            if !has_cliffed {
-                cliff_date
-            } else {
-                vestment_data.vestment_start
-            }
-        }
-        None => vestment_data.vestment_start,
+    let withdraw_start = match vestment_data.last_vestment > 0 {
+        true => vestment_data.last_vestment,
+        false => match vestment_data.cliff_date {
+            Some(cliff_date) => cliff_date,
+            None => vestment_data.vestment_start,
+        },
     };
+    vestment_data.last_vestment = current_timestapm;
 
     require!(vestment_data.amount > 0, VestmenErrors::TokensClaimed);
 
@@ -51,24 +49,14 @@ pub fn claim_vested_tokens(ctx: Context<ClaimVestedTokens>) -> Result<()> {
         consumer.key() == vestment_data.consumer.key(),
         VestmenErrors::WrongClaimAuthority
     );
-    let cliff_percentage: u64 = match vestment_data.cliff_percentage {
-        Some(percentage) => {
-            if !has_cliffed {
-                vestment_data.has_cliffed = true;
-                percentage
-            } else {
-                0
-            }
-        }
-        None => 0,
-    }
-    .checked_div(100)
-    .unwrap()
-    .into();
 
+    let mut cliff_release: u64 = 0;
+    if !has_cliffed {
+        cliff_release = vestment_data.cliff_release_amount;
+        vestment_data.cliff_release_amount = 0;
+    }
     let mut vested_amount: u64 = 0;
-    let cliff_amount: u64 = vestment_data.amount.checked_mul(cliff_percentage).unwrap();
-    vested_amount = vested_amount.checked_add(cliff_amount).unwrap();
+    vested_amount = vested_amount.checked_add(cliff_release).unwrap();
     let left_amount = vestment_data.amount.checked_sub(vested_amount).unwrap();
     let time_passed = current_timestapm
         .checked_sub(withdraw_start)
@@ -77,6 +65,7 @@ pub fn claim_vested_tokens(ctx: Context<ClaimVestedTokens>) -> Result<()> {
         .unwrap()
         .checked_mul(vestment_data.release_amount.try_into().unwrap())
         .unwrap();
+    vestment_data.amount = vestment_data.amount.checked_sub(cliff_release).unwrap();
 
     if time_passed > left_amount.try_into().unwrap() {
         vested_amount = vested_amount.checked_add(left_amount).unwrap();
@@ -86,12 +75,12 @@ pub fn claim_vested_tokens(ctx: Context<ClaimVestedTokens>) -> Result<()> {
         vested_amount = vested_amount
             .checked_add(tokens_amount_to_transfer)
             .unwrap();
-        vestment_data
+        vestment_data.amount = vestment_data
             .amount
             .checked_sub(tokens_amount_to_transfer)
             .unwrap();
     }
-
+    msg!("Vested am {}", vested_amount);
     token::transfer(
         CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
