@@ -1,4 +1,9 @@
-use anchor_lang::prelude::*;
+use anchor_lang::{
+    prelude::*,
+    solana_program::{
+        native_token::LAMPORTS_PER_SOL, program::invoke_signed, system_instruction::transfer,
+    },
+};
 use anchor_spl::token::{self, Mint, Token, TokenAccount};
 
 use crate::{error::VestmenErrors, state::VestmentData};
@@ -17,9 +22,14 @@ pub struct ClaimVestedTokens<'info> {
     vested_tokens: Account<'info, TokenAccount>,
     #[account(mut,token::authority=consumer.key(),constraint=destination_token_account.mint==vestment_mint.key() @ VestmenErrors::WrongDestinationMint)]
     destination_token_account: Account<'info, TokenAccount>,
+    ///CHECK:system account
+    #[account(mut,seeds=[b"sol",vestment_data.key().as_ref()],bump)]
+    sol_token_account: UncheckedAccount<'info>,
     //sysvars
     clock: Sysvar<'info, Clock>,
     token_program: Program<'info, Token>,
+    system_program: Program<'info, System>,
+    rent: Sysvar<'info, Rent>,
 }
 
 pub fn claim_vested_tokens(ctx: Context<ClaimVestedTokens>) -> Result<()> {
@@ -81,28 +91,68 @@ pub fn claim_vested_tokens(ctx: Context<ClaimVestedTokens>) -> Result<()> {
             .unwrap();
     }
     msg!("Vested am {}", vested_amount);
-    token::transfer(
-        CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            token::Transfer {
-                from: ctx.accounts.vested_tokens.to_account_info(),
-                to: ctx.accounts.destination_token_account.to_account_info(),
-                authority: ctx.accounts.vested_tokens.to_account_info(),
-            },
+
+    if ctx.accounts.destination_token_account.is_native() && vestment_data.amount > 0 {
+        let transfer_sol_ix = transfer(
+            &ctx.accounts.sol_token_account.clone().key(),
+            &ctx.accounts.consumer.key(),
+            vested_amount.checked_mul(LAMPORTS_PER_SOL).unwrap(),
+        );
+        invoke_signed(
+            &transfer_sol_ix,
+            &[
+                ctx.accounts.sol_token_account.to_account_info(),
+                ctx.accounts.consumer.to_account_info(),
+            ],
             &[&[
-                b"vestment",
-                ctx.accounts.vestment_mint.key().as_ref(),
-                &[*ctx.bumps.get(&"vested_tokens".to_string()).unwrap()],
+                b"sol",
+                vestment_data.key().as_ref(),
+                &[*ctx.bumps.get(&"sol_token_account".to_string()).unwrap()],
             ]],
-        ),
-        vested_amount.try_into().unwrap(),
-    )?;
+        )?;
+    } else if ctx.accounts.vested_tokens.is_native() && vestment_data.amount == 0 {
+        let sol_account_balance = ctx.accounts.sol_token_account.to_account_info().lamports();
+        let transfer_total_amount_ix = transfer(
+            &ctx.accounts.sol_token_account.key(),
+            &ctx.accounts.consumer.key(),
+            sol_account_balance,
+        );
+        invoke_signed(
+            &transfer_total_amount_ix,
+            &[
+                ctx.accounts.sol_token_account.to_account_info().clone(),
+                ctx.accounts.consumer.to_account_info().clone(),
+            ],
+            &[&[
+                b"sol",
+                vestment_data.key().as_ref(),
+                &[*ctx.bumps.get(&"sol_token_account".to_string()).unwrap()],
+            ]],
+        )?;
+    } else {
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                token::Transfer {
+                    from: ctx.accounts.vested_tokens.to_account_info(),
+                    to: ctx.accounts.destination_token_account.to_account_info(),
+                    authority: ctx.accounts.vested_tokens.to_account_info(),
+                },
+                &[&[
+                    b"vestment",
+                    ctx.accounts.vestment_mint.key().as_ref(),
+                    &[*ctx.bumps.get(&"vested_tokens".to_string()).unwrap()],
+                ]],
+            ),
+            vested_amount.try_into().unwrap(),
+        )?;
+    }
     if vestment_data.amount == 0 {
         token::close_account(CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             token::CloseAccount {
                 account: ctx.accounts.vested_tokens.to_account_info(),
-                destination: ctx.accounts.destination_token_account.to_account_info(),
+                destination: ctx.accounts.consumer.to_account_info(),
                 authority: ctx.accounts.vested_tokens.to_account_info(),
             },
             &[&[

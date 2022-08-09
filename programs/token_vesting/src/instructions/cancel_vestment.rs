@@ -1,7 +1,8 @@
-use anchor_lang::prelude::*;
-use anchor_spl::token::{
-    close_account, transfer, CloseAccount, Mint, Token, TokenAccount, Transfer,
+use anchor_lang::{
+    prelude::*,
+    solana_program::{program::invoke_signed, system_instruction::transfer},
 };
+use anchor_spl::token::{self, close_account, CloseAccount, Mint, Token, TokenAccount, Transfer};
 
 use crate::{error::VestmenErrors, state::VestmentData};
 
@@ -16,25 +17,59 @@ pub struct CancelVestment<'info> {
     source_token_account: Account<'info, TokenAccount>,
     #[account(mut)]
     payer: Signer<'info>,
+    #[account(mut)]
+    vestor: SystemAccount<'info>,
+    #[account(mut,seeds=[b"sol",vestment_data.key().as_ref()],bump)]
+    ///CHECK:system account
+    sol_token_account: UncheckedAccount<'info>,
     //sysvars
     token_program: Program<'info, Token>,
     system_progam: Program<'info, System>,
 }
 
 pub fn cancel_vestment(ctx: Context<CancelVestment>) -> Result<()> {
-    let mut cancel_authorities: Vec<Pubkey> = Vec::new();
-    let allowed_cancelers = &ctx.accounts.vestment_data.cancel_authorities;
-    for canceler in allowed_cancelers {
-        match canceler {
-            Some(canceller) => cancel_authorities.push(*canceller),
-            _ => (),
-        }
-    }
-    let can_cancel = allowed_cancelers.contains(&Some(ctx.accounts.payer.key()));
+    let vestor_cancel_authority = ctx
+        .accounts
+        .vestment_data
+        .vestor_cancel_authority
+        .unwrap_or_default();
+    let consumer_cancel_authority: Pubkey = ctx
+        .accounts
+        .vestment_data
+        .consumer_cancel_authority
+        .unwrap_or_default();
 
+    let mut can_cancel = false;
+    if ctx.accounts.payer.key() == vestor_cancel_authority.key()
+        || ctx.accounts.payer.key() == consumer_cancel_authority.key()
+    {
+        can_cancel = true;
+    }
     require!(can_cancel == true, VestmenErrors::WrongCancelAuthority);
 
-    transfer(
+    if ctx.accounts.vested_tokens.is_native() {
+        let sol_ta_balance = &ctx.accounts.sol_token_account.lamports();
+        let transfer_sol_ix = transfer(
+            &ctx.accounts.sol_token_account.key(),
+            &ctx.accounts.vestment_data.vestor,
+            sol_ta_balance.clone(),
+        );
+        invoke_signed(
+            &transfer_sol_ix,
+            &[
+                ctx.accounts.sol_token_account.to_account_info().clone(),
+                ctx.accounts.vestor.to_account_info().clone(),
+            ],
+            &[&[
+                b"sol",
+                ctx.accounts.vestment_data.key().as_ref(),
+                &[*ctx.bumps.get(&"sol_token_account".to_string()).unwrap()],
+            ]],
+        )?;
+        return Ok(());
+    }
+
+    token::transfer(
         CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             Transfer {

@@ -13,7 +13,8 @@ pub struct VestmentData {
     pub cliff_date: Option<i64>,
     pub cliff_release_amount: u64,
     pub has_cliffed: bool,
-    pub cancel_authorities: Vec<Option<Pubkey>>,
+    pub vestor_cancel_authority: Option<Pubkey>,
+    pub consumer_cancel_authority: Option<Pubkey>,
     pub last_vestment: i64,
     pub withdrawn_amount: u64,
 }
