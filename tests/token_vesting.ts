@@ -8,11 +8,16 @@ import {
   createAccount,
   createAssociatedTokenAccount,
   createInitializeAccountInstruction,
+  createInitializeMintInstruction,
   createMint,
   createMintToCheckedInstruction,
+  createMintToInstruction,
+  DecodedInstruction,
   getMinimumBalanceForRentExemptAccount,
   getOrCreateAssociatedTokenAccount,
   initializeAccountInstructionData,
+  initializeMintInstructionData,
+  isInitializeMintInstruction,
   NATIVE_MINT,
   TokenInstruction,
   TOKEN_PROGRAM_ID,
@@ -21,6 +26,21 @@ import { sendTransaction } from "../programs/token_vesting/src/helpers/transacti
 import { assert } from "chai";
 import { BN } from "bn.js";
 import dayjs from "dayjs";
+import {
+  Metadata,
+  createCreateMetadataAccountInstruction,
+  CreateMetadataAccountInstructionArgs,
+  Creator,
+  CreateMetadataAccountInstructionAccounts,
+  createSetCollectionSizeInstruction,
+  PROGRAM_ID,
+  createCreateMetadataAccountV3Instruction,
+  CreateMetadataAccountV3InstructionArgs,
+  Uses,
+  UseMethod,
+  createCreateMetadataAccountV2Instruction,
+  CreateMetadataAccountV2InstructionArgs,
+} from "@metaplex-foundation/mpl-token-metadata";
 describe("token_vesting", () => {
   // Configure the client to use the local cluster.
   anchor.setProvider(anchor.AnchorProvider.env());
@@ -560,4 +580,184 @@ describe("token_vesting", () => {
     console.log(solVestorBalance / LAMPORTS_PER_SOL, "SOL VESTOR BAL");
     assert.isAbove(solVestorBalance, 2);
   });
+  it("should initialize buy escrow", async () => {
+    const airdropIx = await connection.requestAirdrop(
+      wallet.publicKey,
+      5000000000
+    );
+    await connection.confirmTransaction(airdropIx);
+    const nativeTokenAcc = await createAssociatedTokenAccount(
+      connection,
+      wallet,
+      NATIVE_MINT,
+      wallet.publicKey
+    );
+    const [escrowData] = await PublicKey.findProgramAddress(
+      [Buffer.from("escrow"), NATIVE_MINT.toBuffer(), NATIVE_MINT.toBuffer()],
+      program.programId
+    );
+    const [escrowTa] = await PublicKey.findProgramAddress(
+      [Buffer.from("escrow"), escrowData.toBuffer()],
+      program.programId
+    );
+    const initializeBuyEscrow = program.instruction.initializeEscrow(
+      new BN(2 * LAMPORTS_PER_SOL),
+      new BN(4 * LAMPORTS_PER_SOL),
+      {
+        accounts: {
+          escrowData: escrowData,
+          escrowTokenAccount: escrowTa,
+          escrowInitializer: wallet.publicKey,
+          offeredMint: NATIVE_MINT,
+          wantedMint: NATIVE_MINT,
+          sourceTokenAccount: nativeTokenAcc,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        },
+      }
+    );
+    try {
+      await sendTransaction(
+        connection,
+        [initializeBuyEscrow],
+        [wallet],
+        wallet
+      );
+    } catch (error) {
+      console.log(error);
+    }
+    const escrowBalance = await connection.getBalance(escrowTa);
+
+    console.log(escrowBalance / LAMPORTS_PER_SOL);
+
+    assert.isAbove(escrowBalance, 2 * LAMPORTS_PER_SOL, "Escrow lamports");
+  });
+
+  let assTokenAcc: PublicKey | undefined;
+  let nftMint: PublicKey | undefined;
+  it("should mint nft to wallet", async () => {
+    nftMint = await createMint(
+      connection,
+      wallet,
+      wallet.publicKey,
+      wallet.publicKey,
+      0
+    );
+
+    assTokenAcc = await createAssociatedTokenAccount(
+      connection,
+      wallet,
+      nftMint,
+      wallet.publicKey
+    );
+
+    const initMint = createInitializeMintInstruction(
+      nftMint,
+      0,
+      wallet.publicKey,
+      wallet.publicKey
+    );
+
+    // const initializeMint = createMintToInstruction(
+    //   nftMint,
+    //   assTokenAcc,
+    //   wallet.publicKey,
+    //   1
+    // );
+    const creator: Creator = {
+      address: wallet.publicKey,
+      share: 100,
+      verified: false,
+    };
+    const [metadata] = await PublicKey.findProgramAddress(
+      [Buffer.from("metadata"), nftMint.toBuffer()],
+      PROGRAM_ID
+    );
+
+    const args: CreateMetadataAccountV2InstructionArgs = {
+      createMetadataAccountArgsV2: {
+        data: {
+          collection: null,
+          creators: [creator],
+          name: "UNQ Universe NFT #0001",
+          sellerFeeBasisPoints: 15,
+          symbol: "UNQ",
+          uri: "",
+          uses: null,
+        },
+        isMutable: false,
+      },
+    };
+
+    const account: CreateMetadataAccountInstructionAccounts = {
+      mint: nftMint,
+      mintAuthority: wallet.publicKey,
+      payer: wallet.publicKey,
+      updateAuthority: wallet.publicKey,
+      metadata,
+    };
+
+    const createMetadataIx = createCreateMetadataAccountV2Instruction(
+      account,
+      args
+    );
+    try {
+      //await sendTransaction(connection, [initMint], [wallet], wallet);
+      await sendTransaction(connection, [createMetadataIx], [wallet], wallet);
+    } catch (error) {
+      console.log(error);
+    }
+    const tokenAccs = await connection.getParsedTokenAccountsByOwner(
+      wallet.publicKey,
+      { mint: nftMint }
+    );
+    console.log(tokenAccs.value[0]);
+    assert.equal(tokenAccs.value.length, 1, "Nft successfully minted");
+  });
+
+  // it("should escrow nft", async () => {
+  //   const [escrowData] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("escrow"), nftMint.toBuffer(), NATIVE_MINT.toBuffer()],
+  //     program.programId
+  //   );
+  //   const [escrowTa] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("escrow"), escrowData.toBuffer()],
+  //     program.programId
+  //   );
+  //   const initializeBuyEscrow = program.instruction.initializeEscrow(
+  //     new BN(1),
+  //     new BN(4 * LAMPORTS_PER_SOL),
+  //     {
+  //       accounts: {
+  //         escrowData: escrowData,
+  //         escrowTokenAccount: escrowTa,
+  //         escrowInitializer: wallet.publicKey,
+  //         offeredMint: nftMint,
+  //         wantedMint: NATIVE_MINT,
+  //         sourceTokenAccount: assTokenAcc,
+  //         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+  //         systemProgram: anchor.web3.SystemProgram.programId,
+  //         tokenProgram: TOKEN_PROGRAM_ID,
+  //         clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+  //       },
+  //     }
+  //   );
+  //   try {
+  //     await sendTransaction(
+  //       connection,
+  //       [initializeBuyEscrow],
+  //       [wallet],
+  //       wallet
+  //     );
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  //   const escrowNft = await connection.getParsedTokenAccountsByOwner(escrowTa, {
+  //     mint: nftMint,
+  //   });
+  //   console.log(escrowNft.value[0].account.data.parsed.info);
+  //   assert.equal(escrowNft.value.length, 1);
+  // });
 });

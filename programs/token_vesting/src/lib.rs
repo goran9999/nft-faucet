@@ -40,4 +40,11 @@ pub mod token_vesting {
     pub fn cancel_vestment(ctx: Context<CancelVestment>) -> Result<()> {
         return instructions::cancel_vestment(ctx);
     }
+    pub fn initialize_escrow(
+        ctx: Context<InitializeEscrow>,
+        offered_amount: u64,
+        wanted_amount: u64,
+    ) -> Result<()> {
+        return instructions::initialize_escrow(ctx, offered_amount, wanted_amount);
+    }
 }

@@ -6,3 +6,6 @@ pub mod claim_vested_tokens;
 
 pub use cancel_vestment::*;
 pub mod cancel_vestment;
+
+pub use initialize_escrow::*;
+pub mod initialize_escrow;
