@@ -9,3 +9,6 @@ pub mod cancel_vestment;
 
 pub use initialize_escrow::*;
 pub mod initialize_escrow;
+
+pub use accept_escrow_offer::*;
+pub mod accept_escrow_offer;

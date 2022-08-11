@@ -7,8 +7,12 @@ use anchor_lang::{
 use anchor_spl::token::{Mint, Token, TokenAccount, Transfer};
 use spl_token::instruction::sync_native;
 
-use crate::{error::VestmenErrors, state::EscrowData};
+use crate::{
+    error::VestmenErrors,
+    state::{EscrowData, OfferStatus},
+};
 #[derive(Accounts)]
+#[instruction()]
 pub struct InitializeEscrow<'info> {
     #[account(init,payer=escrow_initializer,seeds=[b"escrow",offered_mint.key().as_ref(),wanted_mint.key().as_ref()],bump,space=8+size_of::<EscrowData>())]
     pub escrow_data: Account<'info, EscrowData>,
@@ -43,6 +47,7 @@ pub fn initialize_escrow(
     escrow_data.offered_mint = ctx.accounts.offered_mint.key();
     escrow_data.source_token_account = ctx.accounts.source_token_account.key();
     escrow_data.escrow_token_account = ctx.accounts.escrow_token_account.key();
+    escrow_data.offer_status = OfferStatus::Initialized;
 
     if source_token_account.is_native() {
         let transfer_sol_ix = transfer(

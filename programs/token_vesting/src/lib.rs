@@ -3,7 +3,6 @@ use instructions::*;
 mod error;
 pub mod instructions;
 pub mod state;
-
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 #[program]
 pub mod token_vesting {
@@ -46,5 +45,8 @@ pub mod token_vesting {
         wanted_amount: u64,
     ) -> Result<()> {
         return instructions::initialize_escrow(ctx, offered_amount, wanted_amount);
+    }
+    pub fn accept_escrow_offer(ctx: Context<AcceptEscrow>) -> Result<()> {
+        return instructions::accept_escrow_offer(ctx);
     }
 }
