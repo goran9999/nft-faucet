@@ -65,4 +65,7 @@ pub mod token_vesting {
             cliff_dates,
         );
     }
+    pub fn claim_vested_nft(ctx: Context<ClaimNft>) -> Result<()> {
+        return instructions::claim_vested_nft(ctx);
+    }
 }

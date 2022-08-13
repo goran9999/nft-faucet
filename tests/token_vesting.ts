@@ -84,9 +84,9 @@ describe("token_vesting", () => {
   //   solVestor = Keypair.generate();
   // });
 
-  // beforeEach(function (done) {
-  //   setTimeout(done, 4000);
-  // });
+  beforeEach(function (done) {
+    setTimeout(done, 4000);
+  });
 
   // it("should mint token to account!", async () => {
   //   const airdropIx = await connection.requestAirdrop(
@@ -988,6 +988,8 @@ describe("token_vesting", () => {
   //   console.log(escrowNft.value[0].account.data.parsed.info);
   //   assert.equal(escrowNft.value.length, 1);
   // });
+  let nftMints: PublicKey[] = [];
+  let tokenAccounts: PublicKey[] = [];
 
   it("should vest multiple nfts", async () => {
     const { mints, tokenAccs } = await mintMultipleNftsToWallet(
@@ -995,6 +997,7 @@ describe("token_vesting", () => {
       1,
       connection
     );
+    nftMints = [...mints];
     const nftRecordPdas: PublicKey[] = [];
     const remainingAccounts: AccountMeta[] = [];
     const [nftVestingData] = await PublicKey.findProgramAddress(
@@ -1012,18 +1015,14 @@ describe("token_vesting", () => {
 
     const dedicatedConsumers: PublicKey[] = [];
     for (const [index, mint] of mints.entries()) {
-      dedicatedConsumers.push(
-        new PublicKey("85sBfyenoRBuw5rzgRBkw3EHeXDB1oc34sqrMKHYe9MM")
-      );
+      dedicatedConsumers.push(acceptor.publicKey);
 
       const [nftVestingRecord] = await PublicKey.findProgramAddress(
         [
           Buffer.from("nft-record"),
           mint.toBuffer(),
           nftVestingData.toBuffer(),
-          new PublicKey(
-            "85sBfyenoRBuw5rzgRBkw3EHeXDB1oc34sqrMKHYe9MM"
-          ).toBuffer(),
+          acceptor.publicKey.toBuffer(),
         ],
         program.programId
       );
@@ -1057,6 +1056,7 @@ describe("token_vesting", () => {
         isWritable: true,
         pubkey: nftVestingRecord,
       });
+      tokenAccounts.push(newAccountPubkey.address);
     }
 
     const walletTokenAccs = await connection.getParsedTokenAccountsByOwner(
@@ -1066,11 +1066,12 @@ describe("token_vesting", () => {
     walletTokenAccs.value.forEach((v) =>
       console.log(v.account.data.parsed.info)
     );
+    const cliffStart = dayjs().add(3, "seconds").unix();
     const vestNfts = program.instruction.vestNfts(
       dedicatedConsumers,
       1,
       null,
-      [null],
+      [new BN(cliffStart)],
       {
         accounts: {
           nftVestingData,
@@ -1110,5 +1111,66 @@ describe("token_vesting", () => {
     //   nftRecordAccs.data
     // );
     // console.log(deserializedData);
+  });
+  it("should claim vested nfts", async () => {
+    const [nftVestingData] = await PublicKey.findProgramAddress(
+      [Buffer.from("nft-vesting"), wallet.publicKey.toBuffer()],
+      program.programId
+    );
+    const [vestedNftsOwner] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("nft-vesting"),
+        Buffer.from("vested-nfts"),
+        nftVestingData.toBuffer(),
+      ],
+      program.programId
+    );
+    const instructions: anchor.web3.TransactionInstruction[] = [];
+    for (const [index, mintAddress] of nftMints.entries()) {
+      const [nftVestingRecord] = await PublicKey.findProgramAddress(
+        [
+          Buffer.from("nft-record"),
+          mintAddress.toBuffer(),
+          nftVestingData.toBuffer(),
+          acceptor.publicKey.toBuffer(),
+        ],
+        program.programId
+      );
+      const destinationAta = await getOrCreateAssociatedTokenAccount(
+        connection,
+        acceptor,
+        mintAddress,
+        acceptor.publicKey
+      );
+      const tokenAccountAddress = tokenAccounts[index];
+      const claimNftIx = program.instruction.claimVestedNft({
+        accounts: {
+          nftMint: mintAddress,
+          nftVestmentRecord: nftVestingRecord,
+          destinationTokenAccount: destinationAta.address,
+          nftConsumer: acceptor.publicKey,
+          vestedTokenAccount: tokenAccountAddress,
+          nftVestingData: nftVestingData,
+          vestedNftsOwner: vestedNftsOwner,
+          nftVestor: wallet.publicKey,
+          clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        },
+      });
+      instructions.push(claimNftIx);
+    }
+    try {
+      await sendTransaction(connection, instructions, [acceptor], acceptor);
+    } catch (error) {
+      console.log(error);
+    }
+    const acceptorTa = await connection.getParsedTokenAccountsByOwner(
+      acceptor.publicKey,
+      { programId: TOKEN_PROGRAM_ID }
+    );
+    console.log(
+      acceptorTa.value[0].account.data.parsed.info,
+      "FINAL ACC DESTINATION"
+    );
   });
 });

@@ -15,3 +15,6 @@ pub mod accept_escrow_offer;
 
 pub use vest_nfts::*;
 pub mod vest_nfts;
+
+pub use claim_vested_nft::*;
+pub mod claim_vested_nft;
