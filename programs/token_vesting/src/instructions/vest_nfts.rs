@@ -30,7 +30,7 @@ pub struct VestNfts<'info> {
 
 pub fn vest_nfts<'a, 'b, 'c, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, VestNfts<'info>>,
-    dedicated_consumers: Vec<Option<Pubkey>>,
+    dedicated_consumers: Vec<Pubkey>,
     nft_number: u32,
     collection_address: Option<Pubkey>,
     cliff_dates: Vec<Option<i64>>,
@@ -71,12 +71,14 @@ pub fn vest_nfts<'a, 'b, 'c, 'info>(
             Some(date) => date.clone(),
             None => current_timestamp,
         };
+        let dedicated_consumer = dedicated_consumers.get(counter).unwrap().clone();
 
         let nft_vestment_record_data: Vec<u8> = NftVestmentRecord {
             cliff_date: cliff_start,
             nft_mint: nft_mint.key.clone(),
             source_token_account: associated_ta.key.clone(),
-            dedicated_consumer: dedicated_consumers.get(counter).unwrap().clone(),
+            dedicated_consumer: dedicated_consumer,
+            has_claimed: false,
         }
         .try_to_vec()?;
         nft_vestment_record.extend_from_slice(&nft_vestment_record_data);
@@ -85,6 +87,7 @@ pub fn vest_nfts<'a, 'b, 'c, 'info>(
                 b"nft-record",
                 nft_mint.key.as_ref(),
                 nft_vesting_data.key().as_ref(),
+                dedicated_consumer.as_ref(),
             ],
             ctx.program_id,
         );
@@ -110,6 +113,7 @@ pub fn vest_nfts<'a, 'b, 'c, 'info>(
                 b"nft-record",
                 nft_mint.key.as_ref(),
                 nft_vesting_data.key().as_ref(),
+                dedicated_consumer.as_ref(),
                 &[bump],
             ]],
         )?;

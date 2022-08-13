@@ -52,7 +52,7 @@ pub mod token_vesting {
     }
     pub fn vest_nfts<'a, 'b, 'c, 'info>(
         ctx: Context<'a, 'b, 'c, 'info, VestNfts<'info>>,
-        dedicated_takers: Vec<Option<Pubkey>>,
+        dedicated_takers: Vec<Pubkey>,
         nft_amount: u32,
         collection_address: Option<Pubkey>,
         cliff_dates: Vec<Option<i64>>,

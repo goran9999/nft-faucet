@@ -1017,7 +1017,14 @@ describe("token_vesting", () => {
       );
 
       const [nftVestingRecord] = await PublicKey.findProgramAddress(
-        [Buffer.from("nft-record"), mint.toBuffer(), nftVestingData.toBuffer()],
+        [
+          Buffer.from("nft-record"),
+          mint.toBuffer(),
+          nftVestingData.toBuffer(),
+          new PublicKey(
+            "85sBfyenoRBuw5rzgRBkw3EHeXDB1oc34sqrMKHYe9MM"
+          ).toBuffer(),
+        ],
         program.programId
       );
 

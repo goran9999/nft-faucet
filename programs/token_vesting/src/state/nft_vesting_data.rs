@@ -15,5 +15,6 @@ pub struct NftVestmentRecord {
     pub nft_mint: Pubkey,
     pub cliff_date: i64,
     pub source_token_account: Pubkey,
-    pub dedicated_consumer: Option<Pubkey>,
+    pub dedicated_consumer: Pubkey,
+    pub has_claimed: bool,
 }
