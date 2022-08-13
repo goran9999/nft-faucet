@@ -22,3 +22,4 @@ overflow-checks = true
 spl-token = "3.3.0"
 anchor-spl = "0.24.2"
 anchor-lang = {version = "0.24.2", features = ["init-if-needed"] }
+itertools = "0.10.3"

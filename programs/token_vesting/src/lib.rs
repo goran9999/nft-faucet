@@ -3,6 +3,7 @@ use instructions::*;
 mod error;
 pub mod instructions;
 pub mod state;
+pub mod utils;
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 #[program]
 pub mod token_vesting {
@@ -48,5 +49,20 @@ pub mod token_vesting {
     }
     pub fn accept_escrow_offer(ctx: Context<AcceptEscrow>) -> Result<()> {
         return instructions::accept_escrow_offer(ctx);
+    }
+    pub fn vest_nfts<'a, 'b, 'c, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, VestNfts<'info>>,
+        dedicated_takers: Vec<Option<Pubkey>>,
+        nft_amount: u32,
+        collection_address: Option<Pubkey>,
+        cliff_dates: Vec<Option<i64>>,
+    ) -> Result<()> {
+        return instructions::vest_nfts(
+            ctx,
+            dedicated_takers,
+            nft_amount,
+            collection_address,
+            cliff_dates,
+        );
     }
 }

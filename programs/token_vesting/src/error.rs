@@ -18,4 +18,10 @@ pub enum VestmenErrors {
     TokensClaimed,
     #[msg("Not allowed to cancel vesting")]
     WrongCancelAuthority,
+    #[msg("Account already initialized")]
+    NftRecordAlredyInitialized,
+    #[msg("Missing data about cliff period")]
+    MissingCliffPeriod,
+    #[msg("Missing data about dedicated consumers")]
+    MissingDedicatedConsumers,
 }

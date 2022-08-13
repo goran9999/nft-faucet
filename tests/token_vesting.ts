@@ -1,7 +1,8 @@
 import * as anchor from "@project-serum/anchor";
 import { Program } from "@project-serum/anchor";
 import { TokenVesting } from "../target/types/token_vesting";
-import { Keypair, PublicKey } from "@solana/web3.js";
+import { Keypair, PublicKey, AccountMeta } from "@solana/web3.js";
+import { deserialize } from "borsh";
 import {
   Account,
   ACCOUNT_SIZE,
@@ -22,9 +23,18 @@ import {
   TokenInstruction,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
-import { sendTransaction } from "../programs/token_vesting/src/helpers/transaction";
+import {
+  walletSecret,
+  secondWalletPubkey,
+  secondWalletSecret,
+  walletPubkey,
+} from "./wallets/wallets";
+import {
+  mintMultipleNftsToWallet,
+  sendTransaction,
+} from "../programs/token_vesting/src/helpers/transaction";
 import { assert } from "chai";
-import { BN } from "bn.js";
+import { BN, min } from "bn.js";
 import dayjs from "dayjs";
 import {
   Metadata,
@@ -40,7 +50,15 @@ import {
   UseMethod,
   createCreateMetadataAccountV2Instruction,
   CreateMetadataAccountV2InstructionArgs,
+  CreateMetadataAccountV2InstructionAccounts,
+  createCreateMasterEditionInstruction,
+  createCreateMasterEditionV3Instruction,
+  PROGRAM_ADDRESS,
 } from "@metaplex-foundation/mpl-token-metadata";
+import {
+  createNftRecordSchema,
+  NftVestmentRecord,
+} from "../programs/token_vesting/src/helpers/utilities";
 describe("token_vesting", () => {
   // Configure the client to use the local cluster.
   anchor.setProvider(anchor.AnchorProvider.env());
@@ -66,9 +84,9 @@ describe("token_vesting", () => {
   //   solVestor = Keypair.generate();
   // });
 
-  beforeEach(function (done) {
-    setTimeout(done, 4000);
-  });
+  // beforeEach(function (done) {
+  //   setTimeout(done, 4000);
+  // });
 
   // it("should mint token to account!", async () => {
   //   const airdropIx = await connection.requestAirdrop(
@@ -584,152 +602,269 @@ describe("token_vesting", () => {
   let wantedMint: PublicKey | undefined;
   let acceptorTa: PublicKey | undefined;
   before(async () => {
-    wallet = Keypair.generate();
-    acceptor = Keypair.generate();
+    const secretWalletArray = new Uint8Array(walletSecret);
+    wallet = Keypair.fromSecretKey(secretWalletArray);
+    const secondSecretWalletArray = new Uint8Array(secondWalletSecret);
+    acceptor = Keypair.fromSecretKey(secondSecretWalletArray);
+
     const airdropIx = await connection.requestAirdrop(
       acceptor.publicKey,
       5000000000
     );
     await connection.confirmTransaction(airdropIx);
-    wantedMint = await createMint(
-      connection,
-      acceptor,
-      acceptor.publicKey,
-      acceptor.publicKey,
-      0
-    );
-  });
-  it("should initialize buy escrow", async () => {
-    const airdropIx = await connection.requestAirdrop(
+
+    const airdropIx2 = await connection.requestAirdrop(
       wallet.publicKey,
       5000000000
     );
-    await connection.confirmTransaction(airdropIx);
-    const nativeTokenAcc = await createAssociatedTokenAccount(
-      connection,
-      wallet,
-      NATIVE_MINT,
-      wallet.publicKey
-    );
-    const [escrowData] = await PublicKey.findProgramAddress(
-      [Buffer.from("escrow"), NATIVE_MINT.toBuffer(), wantedMint.toBuffer()],
-      program.programId
-    );
-    const [escrowTa] = await PublicKey.findProgramAddress(
-      [Buffer.from("escrow"), escrowData.toBuffer()],
-      program.programId
-    );
+    await connection.confirmTransaction(airdropIx2);
 
-    const initializeBuyEscrow = program.instruction.initializeEscrow(
-      new BN(4 * LAMPORTS_PER_SOL),
-      new BN(1),
-      {
-        accounts: {
-          escrowData: escrowData,
-          escrowTokenAccount: escrowTa,
-          escrowInitializer: wallet.publicKey,
-          offeredMint: NATIVE_MINT,
-          wantedMint: wantedMint,
-          sourceTokenAccount: nativeTokenAcc,
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-          systemProgram: anchor.web3.SystemProgram.programId,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
-        },
-      }
-    );
-    try {
-      await sendTransaction(
-        connection,
-        [initializeBuyEscrow],
-        [wallet],
-        wallet
-      );
-    } catch (error) {
-      console.log(error);
-    }
-    const escrowBalance = await connection.getBalance(escrowTa);
-
-    console.log(escrowBalance / LAMPORTS_PER_SOL);
-
-    assert.isAbove(escrowBalance, 2 * LAMPORTS_PER_SOL, "Escrow lamports");
+    // wantedMint = await createMint(
+    //   connection,
+    //   acceptor,
+    //   acceptor.publicKey,
+    //   acceptor.publicKey,
+    //   0
+    // );
   });
+  // it("should initialize buy escrow", async () => {
+  //   // const airdropIx = await connection.requestAirdrop(
+  //   //   wallet.publicKey,
+  //   //   5000000000
+  //   // );
+  //   // await connection.confirmTransaction(airdropIx);
+  //   console.log(wallet.publicKey.toString(), "WALLET");
 
-  it("should execute escrow", async () => {
-    const [escrowData] = await PublicKey.findProgramAddress(
-      [Buffer.from("escrow"), NATIVE_MINT.toBuffer(), wantedMint.toBuffer()],
-      program.programId
-    );
-    const [escrowTa] = await PublicKey.findProgramAddress(
-      [Buffer.from("escrow"), escrowData.toBuffer()],
-      program.programId
-    );
-    console.log(await connection.getBalance(acceptor.publicKey), "ACCEPTOR");
+  //   const nativeTokenAcc = await getOrCreateAssociatedTokenAccount(
+  //     connection,
+  //     wallet,
+  //     NATIVE_MINT,
+  //     wallet.publicKey
+  //   );
+  //   const [escrowData] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("escrow"), NATIVE_MINT.toBuffer(), wantedMint.toBuffer()],
+  //     program.programId
+  //   );
+  //   const [escrowTa] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("escrow"), escrowData.toBuffer()],
+  //     program.programId
+  //   );
 
-    const escrowDataAcc = await program.account.escrowData.fetch(escrowData);
-    const acceptorTa = await createAssociatedTokenAccount(
-      connection,
-      acceptor,
-      escrowDataAcc.wantedMint,
-      acceptor.publicKey
-    );
-    const initializerTokenAccount = await createAssociatedTokenAccount(
-      connection,
-      acceptor,
-      wantedMint,
-      wallet.publicKey
-    );
-    const mintTo = createMintToCheckedInstruction(
-      escrowDataAcc.wantedMint,
-      acceptorTa,
-      acceptor.publicKey,
-      1,
-      0
-    );
-    const accpetOffer = program.instruction.acceptEscrowOffer({
-      accounts: {
-        acceptor: acceptor.publicKey,
-        acceptorTokens: acceptorTa,
-        escrowData: escrowData,
-        escrowInitializer: escrowDataAcc.escrowInitializer,
-        escrowTokenAccount: escrowTa,
-        initializerTokenAccount: initializerTokenAccount,
-        offeredMint: escrowDataAcc.offeredMint,
-        wantedMint: escrowDataAcc.wantedMint,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-        systemProgram: anchor.web3.SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      },
-    });
-    try {
-      await sendTransaction(connection, [mintTo], [acceptor], acceptor);
-      await sendTransaction(connection, [accpetOffer], [acceptor], acceptor);
-    } catch (error) {
-      console.log(error);
-    }
-    const initTa = await connection.getParsedTokenAccountsByOwner(
-      wallet.publicKey,
-      { mint: wantedMint }
-    );
-    const accTa = await connection.getParsedTokenAccountsByOwner(
-      acceptor.publicKey,
-      {
-        mint: wantedMint,
-      }
-    );
-    console.log(initTa.value[0].account.data.parsed.info);
-    console.log(accTa.value[0].account.data.parsed.info);
-    assert.equal(initTa.value.length, 1, "NFT successfully transfered");
-    const acceptorBalance = await connection.getBalance(acceptor.publicKey);
-    assert.isAbove(
-      acceptorBalance,
-      7 * LAMPORTS_PER_SOL,
-      "Lamports transfered to acceptor"
-    );
-  });
+  //   const initializeBuyEscrow = program.instruction.initializeEscrow(
+  //     new BN(0.0000001 * LAMPORTS_PER_SOL),
+  //     new BN(1),
+  //     {
+  //       accounts: {
+  //         escrowData: escrowData,
+  //         escrowTokenAccount: escrowTa,
+  //         escrowInitializer: wallet.publicKey,
+  //         offeredMint: NATIVE_MINT,
+  //         wantedMint: wantedMint,
+  //         sourceTokenAccount: nativeTokenAcc.address,
+  //         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+  //         systemProgram: anchor.web3.SystemProgram.programId,
+  //         tokenProgram: TOKEN_PROGRAM_ID,
+  //         clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+  //       },
+  //     }
+  //   );
+  //   try {
+  //     await sendTransaction(
+  //       connection,
+  //       [initializeBuyEscrow],
+  //       [wallet],
+  //       wallet
+  //     );
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  //   const escrowBalance = await connection.getBalance(escrowTa);
 
-  let assTokenAcc: PublicKey | undefined;
-  let nftMint: PublicKey | undefined;
+  //   console.log(escrowBalance / LAMPORTS_PER_SOL);
+
+  //   assert.isAbove(escrowBalance, 2 * LAMPORTS_PER_SOL, "Escrow lamports");
+  // });
+
+  // it("should execute escrow", async () => {
+  //   const [escrowData] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("escrow"), NATIVE_MINT.toBuffer(), wantedMint.toBuffer()],
+  //     program.programId
+  //   );
+  //   const [escrowTa] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("escrow"), escrowData.toBuffer()],
+  //     program.programId
+  //   );
+  //   console.log(await connection.getBalance(acceptor.publicKey), "ACCEPTOR");
+  //   console.log(program.programId.toString(), "AASDAS");
+
+  //   const escrowDataAcc = await program.account.escrowData.fetch(escrowData);
+  //   const acceptorTa = await createAssociatedTokenAccount(
+  //     connection,
+  //     acceptor,
+  //     escrowDataAcc.wantedMint,
+  //     acceptor.publicKey
+  //   );
+  //   const initializerTokenAccount = await createAssociatedTokenAccount(
+  //     connection,
+  //     acceptor,
+  //     wantedMint,
+  //     wallet.publicKey
+  //   );
+  //   const mintTo = createMintToCheckedInstruction(
+  //     escrowDataAcc.wantedMint,
+  //     acceptorTa,
+  //     acceptor.publicKey,
+  //     1,
+  //     0
+  //   );
+  //   const accpetOffer = program.instruction.acceptEscrowOffer({
+  //     accounts: {
+  //       acceptor: acceptor.publicKey,
+  //       acceptorTokens: acceptorTa,
+  //       escrowData: escrowData,
+  //       escrowInitializer: escrowDataAcc.escrowInitializer,
+  //       escrowTokenAccount: escrowTa,
+  //       initializerTokenAccount: initializerTokenAccount,
+  //       offeredMint: escrowDataAcc.offeredMint,
+  //       wantedMint: escrowDataAcc.wantedMint,
+  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+  //       systemProgram: anchor.web3.SystemProgram.programId,
+  //       tokenProgram: TOKEN_PROGRAM_ID,
+  //     },
+  //   });
+  //   try {
+  //     await sendTransaction(connection, [mintTo], [acceptor], acceptor);
+  //     await sendTransaction(connection, [accpetOffer], [acceptor], acceptor);
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  //   const initTa = await connection.getParsedTokenAccountsByOwner(
+  //     wallet.publicKey,
+  //     { mint: wantedMint }
+  //   );
+  //   const accTa = await connection.getParsedTokenAccountsByOwner(
+  //     acceptor.publicKey,
+  //     {
+  //       mint: wantedMint,
+  //     }
+  //   );
+  //   console.log(initTa.value[0].account.data.parsed.info);
+  //   console.log(accTa.value[0].account.data.parsed.info);
+  //   assert.equal(initTa.value.length, 1, "NFT successfully transfered");
+  //   const acceptorBalance = await connection.getBalance(acceptor.publicKey);
+  //   assert.isAbove(
+  //     acceptorBalance,
+  //     7 * LAMPORTS_PER_SOL,
+  //     "Lamports transfered to acceptor"
+  //   );
+  // });
+
+  // it("should mint nft to a wallet", async () => {
+  //   const mint = await createMint(
+  //     connection,
+  //     acceptor,
+  //     acceptor.publicKey,
+  //     acceptor.publicKey,
+  //     0
+  //   );
+  //   const createMintIx = createInitializeMintInstruction(
+  //     mint,
+  //     0,
+  //     acceptor.publicKey,
+  //     acceptor.publicKey
+  //   );
+  //   const [metadataAddress] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("metadata"), mint.toBuffer()],
+  //     new PublicKey(PROGRAM_ADDRESS)
+  //   );
+  //   const [edition] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("metadata"), Buffer.from("edition"), mint.toBuffer()],
+  //     TOKEN_PROGRAM_ID
+  //   );
+  //   const createMasterEdition = createCreateMasterEditionInstruction(
+  //     {
+  //       edition,
+  //       mint,
+  //       mintAuthority: acceptor.publicKey,
+  //       payer: acceptor.publicKey,
+  //       updateAuthority: acceptor.publicKey,
+  //       metadata: metadataAddress,
+  //     },
+  //     {
+  //       createMasterEditionArgs: {
+  //         maxSupply: 1,
+  //       },
+  //     }
+  //   );
+
+  //   const metadataAccounts: CreateMetadataAccountV2InstructionAccounts = {
+  //     mint,
+  //     mintAuthority: acceptor.publicKey,
+  //     payer: consumer.publicKey,
+  //     updateAuthority: consumer.publicKey,
+  //     metadata: metadataAddress,
+  //   };
+  //   const collectionMint = await createMint(
+  //     connection,
+  //     consumer,
+  //     consumer.publicKey,
+  //     consumer.publicKey,
+  //     0
+  //   );
+  //   const initializeCollectionMint = createInitializeMintInstruction(
+  //     collectionMint,
+  //     0,
+  //     consumer.publicKey,
+  //     consumer.publicKey
+  //   );
+  //   const metadataArgs: CreateMetadataAccountV2InstructionArgs = {
+  //     createMetadataAccountArgsV2: {
+  //       data: {
+  //         creators: [
+  //           {
+  //             address: acceptor.publicKey,
+  //             share: 100,
+  //             verified: false,
+  //           },
+  //         ],
+  //         name: "UNQ NFT #0001",
+  //         sellerFeeBasisPoints: 10,
+  //         symbol: "UNQ",
+  //         collection: {
+  //           key: collectionMint,
+  //           verified: false,
+  //         },
+  //         uri: "https://arweave.net/3LIAeaGAex_-REAsrLaTbY8IyB_LAXwkdvC7kN6GUJo",
+  //         uses: null,
+  //       },
+  //       isMutable: false,
+  //     },
+  //   };
+  //   const createMetadataIx = createCreateMetadataAccountV2Instruction(
+  //     metadataAccounts,
+  //     metadataArgs
+  //   );
+  //   console.log(mint.toBuffer(), "NFT MINT");
+
+  //   try {
+  //     await sendTransaction(
+  //       connection,
+  //       [
+  //         createMintIx,
+  //         initializeCollectionMint,
+  //         createMasterEdition,
+  //         createMetadataIx,
+  //       ],
+  //       [acceptor],
+  //       acceptor
+  //     );
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  // });
+
+  // let assTokenAcc: PublicKey | undefined;
+  // let nftMint: PublicKey | undefined;
   // it("should mint nft to wallet", async () => {
   //   nftMint = await createMint(
   //     connection,
@@ -853,4 +988,120 @@ describe("token_vesting", () => {
   //   console.log(escrowNft.value[0].account.data.parsed.info);
   //   assert.equal(escrowNft.value.length, 1);
   // });
+
+  it("should vest multiple nfts", async () => {
+    const { mints, tokenAccs } = await mintMultipleNftsToWallet(
+      wallet,
+      1,
+      connection
+    );
+    const nftRecordPdas: PublicKey[] = [];
+    const remainingAccounts: AccountMeta[] = [];
+    const [nftVestingData] = await PublicKey.findProgramAddress(
+      [Buffer.from("nft-vesting"), wallet.publicKey.toBuffer()],
+      program.programId
+    );
+    const [vestedNftsOwner] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("nft-vesting"),
+        Buffer.from("vested-nfts"),
+        nftVestingData.toBuffer(),
+      ],
+      program.programId
+    );
+
+    const dedicatedConsumers: PublicKey[] = [];
+    for (const [index, mint] of mints.entries()) {
+      dedicatedConsumers.push(
+        new PublicKey("85sBfyenoRBuw5rzgRBkw3EHeXDB1oc34sqrMKHYe9MM")
+      );
+
+      const [nftVestingRecord] = await PublicKey.findProgramAddress(
+        [Buffer.from("nft-record"), mint.toBuffer(), nftVestingData.toBuffer()],
+        program.programId
+      );
+
+      nftRecordPdas.push(nftVestingRecord);
+
+      const newAccountPubkey = await getOrCreateAssociatedTokenAccount(
+        connection,
+        wallet,
+        mint,
+        vestedNftsOwner,
+        true
+      );
+      remainingAccounts.push({
+        isSigner: false,
+        isWritable: true,
+        pubkey: tokenAccs[index],
+      });
+      remainingAccounts.push({
+        isSigner: false,
+        isWritable: true,
+        pubkey: mint,
+      });
+      remainingAccounts.push({
+        isSigner: false,
+        isWritable: true,
+        pubkey: newAccountPubkey.address,
+      });
+      remainingAccounts.push({
+        isSigner: false,
+        isWritable: true,
+        pubkey: nftVestingRecord,
+      });
+    }
+
+    const walletTokenAccs = await connection.getParsedTokenAccountsByOwner(
+      wallet.publicKey,
+      { programId: TOKEN_PROGRAM_ID }
+    );
+    walletTokenAccs.value.forEach((v) =>
+      console.log(v.account.data.parsed.info)
+    );
+    const vestNfts = program.instruction.vestNfts(
+      dedicatedConsumers,
+      1,
+      null,
+      [null],
+      {
+        accounts: {
+          nftVestingData,
+          vestedNftsOwner,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+          nftVestor: wallet.publicKey,
+        },
+        remainingAccounts,
+      }
+    );
+    try {
+      await sendTransaction(connection, [vestNfts], [wallet], wallet);
+    } catch (error) {
+      console.log(error);
+    }
+    const vestedNftsTa = await connection.getParsedTokenAccountsByOwner(
+      vestedNftsOwner,
+      { programId: TOKEN_PROGRAM_ID }
+    );
+    vestedNftsTa.value.forEach((v) => console.log(v.account.data.parsed.info));
+    const nftRecordAccs = await program.account.nftVestmentRecord.fetch(
+      nftRecordPdas[0]
+    );
+    console.log(nftRecordAccs);
+    console.log(nftRecordAccs.dedicatedConsumer.toString());
+
+    // const nftRecordAccs = await connection.getAccountInfo(nftRecordPdas[0]);
+
+    // console.log(nftRecordAccs);
+
+    // const deserializedData = deserialize(
+    //   createNftRecordSchema(),
+    //   NftVestmentRecord,
+    //   nftRecordAccs.data
+    // );
+    // console.log(deserializedData);
+  });
 });
