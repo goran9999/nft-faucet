@@ -18,7 +18,7 @@ pub struct ClaimNft<'info> {
     nft_mint: Account<'info, Mint>,
     #[account(mut)]
     pub nft_vestor: SystemAccount<'info>,
-    #[account(mut)]
+    #[account(mut,seeds=[b"vested-nft",vested_nfts_owner.key().as_ref(),nft_mint.key().as_ref()],bump)]
     vested_token_account: Account<'info, TokenAccount>,
     #[account(mut)]
     nft_consumer: Signer<'info>,

@@ -9,7 +9,7 @@ use anchor_lang::{
     solana_program::{program::invoke_signed, system_instruction::create_account, system_program},
     Discriminator,
 };
-use anchor_spl::token::{self, Token};
+use anchor_spl::token::{self, InitializeAccount, Token, TokenAccount};
 use itertools::Itertools;
 
 #[derive(Accounts)]
@@ -64,6 +64,60 @@ pub fn vest_nfts<'a, 'b, 'c, 'info>(
             VestmenErrors::NftRecordAlredyInitialized
         );
 
+        let (vested_tokens_pda, ta_bump) = Pubkey::find_program_address(
+            &[
+                b"vested-nft",
+                ctx.accounts.vested_nfts_owner.key().as_ref(),
+                nft_mint.key().as_ref(),
+            ],
+            ctx.program_id,
+        );
+
+        require!(
+            vested_tokens_pda == vested_tokens.key(),
+            VestmenErrors::WrongTokenAccAddress
+        );
+        let rent = Rent::get()?;
+        let create_account_ix = create_account(
+            &ctx.accounts.nft_vestor.key(),
+            &vested_tokens_pda,
+            rent.minimum_balance(TokenAccount::LEN),
+            TokenAccount::LEN as u64,
+            &ctx.accounts.token_program.key(),
+        );
+
+        invoke_signed(
+            &create_account_ix,
+            &[
+                ctx.accounts.nft_vestor.to_account_info(),
+                vested_tokens.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[&[
+                b"vested-nft",
+                ctx.accounts.vested_nfts_owner.key().as_ref(),
+                nft_mint.key().as_ref(),
+                &[ta_bump],
+            ]],
+        )?;
+
+        token::initialize_account(CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            InitializeAccount {
+                account: vested_tokens.to_account_info(),
+                authority: ctx.accounts.vested_nfts_owner.to_account_info(),
+                mint: nft_mint.to_account_info(),
+                rent: ctx.accounts.rent.to_account_info(),
+            },
+            &[&[
+                b"nft-vesting",
+                b"vested-nfts",
+                nft_vesting_data.key().as_ref(),
+                &[*ctx.bumps.get(&"vested_nfts_owner".to_string()).unwrap()],
+            ]],
+        ))?;
+
         let mut nft_vestment_record: Vec<u8> = Vec::new();
         nft_vestment_record.extend_from_slice(&NftVestmentRecord::discriminator());
 
@@ -93,7 +147,6 @@ pub fn vest_nfts<'a, 'b, 'c, 'info>(
         );
         let account_size = nft_vestment_record.len();
 
-        let rent = Rent::get()?;
         let create_account_ix = create_account(
             &ctx.accounts.nft_vestor.key,
             pda.borrow(),

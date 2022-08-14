@@ -6,21 +6,14 @@ import { deserialize } from "borsh";
 import {
   Account,
   ACCOUNT_SIZE,
-  createAccount,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
   createAssociatedTokenAccount,
   createInitializeAccountInstruction,
   createInitializeMintInstruction,
   createMint,
-  createMintToCheckedInstruction,
   createMintToInstruction,
-  DecodedInstruction,
   getMinimumBalanceForRentExemptAccount,
   getOrCreateAssociatedTokenAccount,
-  initializeAccountInstructionData,
-  initializeMintInstructionData,
-  isInitializeMintInstruction,
-  NATIVE_MINT,
-  TokenInstruction,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import {
@@ -37,28 +30,12 @@ import { assert } from "chai";
 import { BN, min } from "bn.js";
 import dayjs from "dayjs";
 import {
-  Metadata,
-  createCreateMetadataAccountInstruction,
-  CreateMetadataAccountInstructionArgs,
-  Creator,
-  CreateMetadataAccountInstructionAccounts,
-  createSetCollectionSizeInstruction,
   PROGRAM_ID,
-  createCreateMetadataAccountV3Instruction,
-  CreateMetadataAccountV3InstructionArgs,
-  Uses,
-  UseMethod,
   createCreateMetadataAccountV2Instruction,
-  CreateMetadataAccountV2InstructionArgs,
-  CreateMetadataAccountV2InstructionAccounts,
   createCreateMasterEditionInstruction,
-  createCreateMasterEditionV3Instruction,
   PROGRAM_ADDRESS,
 } from "@metaplex-foundation/mpl-token-metadata";
-import {
-  createNftRecordSchema,
-  NftVestmentRecord,
-} from "../programs/token_vesting/src/helpers/utilities";
+
 describe("token_vesting", () => {
   // Configure the client to use the local cluster.
   anchor.setProvider(anchor.AnchorProvider.env());
@@ -607,17 +584,17 @@ describe("token_vesting", () => {
     const secondSecretWalletArray = new Uint8Array(secondWalletSecret);
     acceptor = Keypair.fromSecretKey(secondSecretWalletArray);
 
-    const airdropIx = await connection.requestAirdrop(
-      acceptor.publicKey,
-      5000000000
-    );
-    await connection.confirmTransaction(airdropIx);
+    // const airdropIx = await connection.requestAirdrop(
+    //   acceptor.publicKey,
+    //   5000000000
+    // );
+    // await connection.confirmTransaction(airdropIx);
 
-    const airdropIx2 = await connection.requestAirdrop(
-      wallet.publicKey,
-      5000000000
-    );
-    await connection.confirmTransaction(airdropIx2);
+    // const airdropIx2 = await connection.requestAirdrop(
+    //   wallet.publicKey,
+    //   5000000000
+    // );
+    // await connection.confirmTransaction(airdropIx2);
 
     // wantedMint = await createMint(
     //   connection,
@@ -991,186 +968,330 @@ describe("token_vesting", () => {
   let nftMints: PublicKey[] = [];
   let tokenAccounts: PublicKey[] = [];
 
-  it("should vest multiple nfts", async () => {
-    const { mints, tokenAccs } = await mintMultipleNftsToWallet(
-      wallet,
-      1,
-      connection
-    );
-    nftMints = [...mints];
-    const nftRecordPdas: PublicKey[] = [];
-    const remainingAccounts: AccountMeta[] = [];
-    const [nftVestingData] = await PublicKey.findProgramAddress(
-      [Buffer.from("nft-vesting"), wallet.publicKey.toBuffer()],
-      program.programId
-    );
-    const [vestedNftsOwner] = await PublicKey.findProgramAddress(
-      [
-        Buffer.from("nft-vesting"),
-        Buffer.from("vested-nfts"),
-        nftVestingData.toBuffer(),
-      ],
-      program.programId
-    );
+  // it("should vest multiple nfts", async () => {
+  //   const { mints, tokenAccs } = await mintMultipleNftsToWallet(
+  //     wallet,
+  //     2,
+  //     connection
+  //   );
+  //   nftMints = [...mints];
+  //   const nftRecordPdas: PublicKey[] = [];
+  //   const remainingAccounts: AccountMeta[] = [];
+  //   const [nftVestingData] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("nft-vesting"), wallet.publicKey.toBuffer()],
+  //     program.programId
+  //   );
+  //   const [vestedNftsOwner] = await PublicKey.findProgramAddress(
+  //     [
+  //       Buffer.from("nft-vesting"),
+  //       Buffer.from("vested-nfts"),
+  //       nftVestingData.toBuffer(),
+  //     ],
+  //     program.programId
+  //   );
 
-    const dedicatedConsumers: PublicKey[] = [];
-    for (const [index, mint] of mints.entries()) {
-      dedicatedConsumers.push(acceptor.publicKey);
+  //   const dedicatedConsumers: PublicKey[] = [];
+  //   for (const [index, mint] of mints.entries()) {
+  //     dedicatedConsumers.push(acceptor.publicKey);
 
-      const [nftVestingRecord] = await PublicKey.findProgramAddress(
-        [
-          Buffer.from("nft-record"),
-          mint.toBuffer(),
-          nftVestingData.toBuffer(),
-          acceptor.publicKey.toBuffer(),
-        ],
-        program.programId
-      );
+  //     const [nftVestingRecord] = await PublicKey.findProgramAddress(
+  //       [
+  //         Buffer.from("nft-record"),
+  //         mint.toBuffer(),
+  //         nftVestingData.toBuffer(),
+  //         acceptor.publicKey.toBuffer(),
+  //       ],
+  //       program.programId
+  //     );
 
-      nftRecordPdas.push(nftVestingRecord);
+  //     nftRecordPdas.push(nftVestingRecord);
 
-      const newAccountPubkey = await getOrCreateAssociatedTokenAccount(
-        connection,
-        wallet,
-        mint,
-        vestedNftsOwner,
-        true
-      );
-      remainingAccounts.push({
-        isSigner: false,
-        isWritable: true,
-        pubkey: tokenAccs[index],
-      });
-      remainingAccounts.push({
-        isSigner: false,
-        isWritable: true,
-        pubkey: mint,
-      });
-      remainingAccounts.push({
-        isSigner: false,
-        isWritable: true,
-        pubkey: newAccountPubkey.address,
-      });
-      remainingAccounts.push({
-        isSigner: false,
-        isWritable: true,
-        pubkey: nftVestingRecord,
-      });
-      tokenAccounts.push(newAccountPubkey.address);
-    }
+  //     const [vestedNftTa] = await PublicKey.findProgramAddress(
+  //       [
+  //         Buffer.from("vested-nft"),
+  //         vestedNftsOwner.toBuffer(),
+  //         mint.toBuffer(),
+  //       ],
+  //       program.programId
+  //     );
 
-    const walletTokenAccs = await connection.getParsedTokenAccountsByOwner(
+  //     remainingAccounts.push({
+  //       isSigner: false,
+  //       isWritable: true,
+  //       pubkey: tokenAccs[index],
+  //     });
+  //     remainingAccounts.push({
+  //       isSigner: false,
+  //       isWritable: true,
+  //       pubkey: mint,
+  //     });
+  //     remainingAccounts.push({
+  //       isSigner: false,
+  //       isWritable: true,
+  //       pubkey: vestedNftTa,
+  //     });
+  //     remainingAccounts.push({
+  //       isSigner: false,
+  //       isWritable: true,
+  //       pubkey: nftVestingRecord,
+  //     });
+  //   }
+
+  //   const walletTokenAccs = await connection.getParsedTokenAccountsByOwner(
+  //     wallet.publicKey,
+  //     { programId: TOKEN_PROGRAM_ID }
+  //   );
+  //   walletTokenAccs.value.forEach((v) =>
+  //     console.log(v.account.data.parsed.info)
+  //   );
+  //   const cliffStart = dayjs().add(3, "seconds").unix();
+  //   const vestNfts = program.instruction.vestNfts(
+  //     dedicatedConsumers,
+  //     1,
+  //     null,
+  //     [new BN(cliffStart), null],
+  //     {
+  //       accounts: {
+  //         nftVestingData,
+  //         vestedNftsOwner,
+  //         systemProgram: anchor.web3.SystemProgram.programId,
+  //         tokenProgram: TOKEN_PROGRAM_ID,
+  //         clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+  //         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+  //         nftVestor: wallet.publicKey,
+  //       },
+  //       remainingAccounts,
+  //     }
+  //   );
+  //   try {
+  //     await sendTransaction(connection, [vestNfts], [wallet], wallet);
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  //   const vestedNftsTa = await connection.getParsedTokenAccountsByOwner(
+  //     vestedNftsOwner,
+  //     { programId: TOKEN_PROGRAM_ID }
+  //   );
+  //   vestedNftsTa.value.forEach((v) => console.log(v.account.data.parsed.info));
+  //   const nftRecordAccs = await program.account.nftVestmentRecord.fetchMultiple(
+  //     nftRecordPdas
+  //   );
+  //   console.log(nftRecordAccs);
+
+  // const nftRecordAccs = await connection.getAccountInfo(nftRecordPdas[0]);
+
+  // console.log(nftRecordAccs);
+
+  // const deserializedData = deserialize(
+  //   createNftRecordSchema(),
+  //   NftVestmentRecord,
+  //   nftRecordAccs.data
+  // );
+  // console.log(deserializedData);
+  // });
+  // it("should claim vested nfts", async () => {
+  //   const [nftVestingData] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("nft-vesting"), wallet.publicKey.toBuffer()],
+  //     program.programId
+  //   );
+  //   const [vestedNftsOwner] = await PublicKey.findProgramAddress(
+  //     [
+  //       Buffer.from("nft-vesting"),
+  //       Buffer.from("vested-nfts"),
+  //       nftVestingData.toBuffer(),
+  //     ],
+  //     program.programId
+  //   );
+  //   const instructions: anchor.web3.TransactionInstruction[] = [];
+  //   for (const [index, mintAddress] of nftMints.entries()) {
+  //     const [nftVestingRecord] = await PublicKey.findProgramAddress(
+  //       [
+  //         Buffer.from("nft-record"),
+  //         mintAddress.toBuffer(),
+  //         nftVestingData.toBuffer(),
+  //         acceptor.publicKey.toBuffer(),
+  //       ],
+  //       program.programId
+  //     );
+  //     const [vestedNftTa] = await PublicKey.findProgramAddress(
+  //       [
+  //         Buffer.from("vested-nft"),
+  //         vestedNftsOwner.toBuffer(),
+  //         mintAddress.toBuffer(),
+  //       ],
+  //       program.programId
+  //     );
+  //     const destinationAta = await getOrCreateAssociatedTokenAccount(
+  //       connection,
+  //       acceptor,
+  //       mintAddress,
+  //       acceptor.publicKey
+  //     );
+
+  //     const claimNftIx = program.instruction.claimVestedNft({
+  //       accounts: {
+  //         nftMint: mintAddress,
+  //         nftVestmentRecord: nftVestingRecord,
+  //         destinationTokenAccount: destinationAta.address,
+  //         nftConsumer: acceptor.publicKey,
+  //         vestedTokenAccount: vestedNftTa,
+  //         nftVestingData: nftVestingData,
+  //         vestedNftsOwner: vestedNftsOwner,
+  //         nftVestor: wallet.publicKey,
+  //         clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+  //         tokenProgram: TOKEN_PROGRAM_ID,
+  //       },
+  //     });
+  //     instructions.push(claimNftIx);
+  //   }
+  //   try {
+  //     await sendTransaction(connection, instructions, [acceptor], acceptor);
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  //   const acceptorTa = await connection.getParsedTokenAccountsByOwner(
+  //     acceptor.publicKey,
+  //     { programId: TOKEN_PROGRAM_ID }
+  //   );
+
+  //   acceptorTa.value.forEach((account) =>
+  //     console.log(account.account.data.parsed.info)
+  //   );
+  // });
+  it("should mint nft", async () => {
+    // const nftMint = await createMint(
+    //   connection,
+    //   wallet,
+    //   wallet.publicKey,
+    //   wallet.publicKey,
+    //   0
+    // );
+
+    const nftMint = Keypair.generate();
+    const initializeMintIx = createInitializeMintInstruction(
+      nftMint.publicKey,
+      0,
       wallet.publicKey,
-      { programId: TOKEN_PROGRAM_ID }
+      wallet.publicKey,
+      TOKEN_PROGRAM_ID
     );
-    walletTokenAccs.value.forEach((v) =>
-      console.log(v.account.data.parsed.info)
+
+    const newAccountPubkey = Keypair.generate();
+
+    const createAccount = anchor.web3.SystemProgram.createAccount({
+      fromPubkey: wallet.publicKey,
+      lamports: await getMinimumBalanceForRentExemptAccount(connection),
+      newAccountPubkey: newAccountPubkey.publicKey,
+      programId: anchor.web3.SystemProgram.programId,
+      space: ACCOUNT_SIZE,
+    });
+
+    const initializeTokenAcc = createInitializeAccountInstruction(
+      newAccountPubkey.publicKey,
+      nftMint.publicKey,
+      wallet.publicKey
     );
-    const cliffStart = dayjs().add(3, "seconds").unix();
-    const vestNfts = program.instruction.vestNfts(
-      dedicatedConsumers,
-      1,
-      null,
-      [new BN(cliffStart)],
+
+    const mintToIx = createMintToInstruction(
+      nftMint.publicKey,
+      newAccountPubkey.publicKey,
+      wallet.publicKey,
+      1
+    );
+
+    console.log(mintToIx.programId.toString(), "MINT TO PROGRAMID");
+
+    mintToIx.programId = TOKEN_PROGRAM_ID;
+
+    console.log(mintToIx.programId.toString(), "MINT TO PROGRAMID");
+
+    const [editionPda] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("metadata"),
+        Buffer.from("edition"),
+        nftMint.publicKey.toBuffer(),
+      ],
+      PROGRAM_ID
+    );
+    const [metadataPda] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("metadata"),
+        nftMint.publicKey.toBuffer(),
+        new PublicKey(PROGRAM_ADDRESS).toBuffer(),
+      ],
+      new PublicKey(PROGRAM_ADDRESS)
+    );
+
+    const createMetadataIx = createCreateMetadataAccountV2Instruction(
       {
-        accounts: {
-          nftVestingData,
-          vestedNftsOwner,
-          systemProgram: anchor.web3.SystemProgram.programId,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-          nftVestor: wallet.publicKey,
+        metadata: metadataPda,
+        mint: mint,
+        mintAuthority: wallet.publicKey,
+        payer: wallet.publicKey,
+        updateAuthority: wallet.publicKey,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      },
+      {
+        createMetadataAccountArgsV2: {
+          data: {
+            collection: null,
+            creators: [
+              {
+                address: wallet.publicKey,
+                share: 100,
+                verified: true,
+              },
+            ],
+            name: "UNQ #0001",
+            sellerFeeBasisPoints: 15,
+            symbol: "UNQ",
+            uses: { remaining: 1, total: 1, useMethod: 1 },
+            uri: "https://arweave.net/3LIAeaGAex_-REAsrLaTbY8IyB_LAXwkdvC7kN6GUJo",
+          },
+          isMutable: true,
         },
-        remainingAccounts,
       }
     );
-    try {
-      await sendTransaction(connection, [vestNfts], [wallet], wallet);
-    } catch (error) {
-      console.log(error);
-    }
-    const vestedNftsTa = await connection.getParsedTokenAccountsByOwner(
-      vestedNftsOwner,
-      { programId: TOKEN_PROGRAM_ID }
-    );
-    vestedNftsTa.value.forEach((v) => console.log(v.account.data.parsed.info));
-    const nftRecordAccs = await program.account.nftVestmentRecord.fetch(
-      nftRecordPdas[0]
-    );
-    console.log(nftRecordAccs);
-    console.log(nftRecordAccs.dedicatedConsumer.toString());
+    console.log(createMetadataIx.programId.toString(), "AAA");
 
-    // const nftRecordAccs = await connection.getAccountInfo(nftRecordPdas[0]);
-
-    // console.log(nftRecordAccs);
-
-    // const deserializedData = deserialize(
-    //   createNftRecordSchema(),
-    //   NftVestmentRecord,
-    //   nftRecordAccs.data
-    // );
-    // console.log(deserializedData);
-  });
-  it("should claim vested nfts", async () => {
-    const [nftVestingData] = await PublicKey.findProgramAddress(
-      [Buffer.from("nft-vesting"), wallet.publicKey.toBuffer()],
-      program.programId
-    );
-    const [vestedNftsOwner] = await PublicKey.findProgramAddress(
-      [
-        Buffer.from("nft-vesting"),
-        Buffer.from("vested-nfts"),
-        nftVestingData.toBuffer(),
-      ],
-      program.programId
-    );
-    const instructions: anchor.web3.TransactionInstruction[] = [];
-    for (const [index, mintAddress] of nftMints.entries()) {
-      const [nftVestingRecord] = await PublicKey.findProgramAddress(
-        [
-          Buffer.from("nft-record"),
-          mintAddress.toBuffer(),
-          nftVestingData.toBuffer(),
-          acceptor.publicKey.toBuffer(),
-        ],
-        program.programId
-      );
-      const destinationAta = await getOrCreateAssociatedTokenAccount(
-        connection,
-        acceptor,
-        mintAddress,
-        acceptor.publicKey
-      );
-      const tokenAccountAddress = tokenAccounts[index];
-      const claimNftIx = program.instruction.claimVestedNft({
-        accounts: {
-          nftMint: mintAddress,
-          nftVestmentRecord: nftVestingRecord,
-          destinationTokenAccount: destinationAta.address,
-          nftConsumer: acceptor.publicKey,
-          vestedTokenAccount: tokenAccountAddress,
-          nftVestingData: nftVestingData,
-          vestedNftsOwner: vestedNftsOwner,
-          nftVestor: wallet.publicKey,
-          clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
-          tokenProgram: TOKEN_PROGRAM_ID,
+    const createMasterEditionIx = createCreateMasterEditionInstruction(
+      {
+        mintAuthority: wallet.publicKey,
+        mint: mint,
+        payer: wallet.publicKey,
+        updateAuthority: wallet.publicKey,
+        edition: editionPda,
+        metadata: metadataPda,
+      },
+      {
+        createMasterEditionArgs: {
+          maxSupply: 1,
         },
-      });
-      instructions.push(claimNftIx);
-    }
-    try {
-      await sendTransaction(connection, instructions, [acceptor], acceptor);
-    } catch (error) {
-      console.log(error);
-    }
-    const acceptorTa = await connection.getParsedTokenAccountsByOwner(
-      acceptor.publicKey,
-      { programId: TOKEN_PROGRAM_ID }
+      }
     );
     console.log(
-      acceptorTa.value[0].account.data.parsed.info,
-      "FINAL ACC DESTINATION"
+      createMasterEditionIx.programId.toString(),
+      "CREATE MASTER EDITION PROGRAMID"
     );
+
+    try {
+      await sendTransaction(
+        connection,
+        [
+          initializeMintIx,
+          createAccount,
+          initializeTokenAcc,
+          mintToIx,
+          createMetadataIx,
+          createMasterEditionIx,
+        ],
+        [wallet, newAccountPubkey],
+        wallet
+      );
+    } catch (error) {
+      console.log(error);
+    }
+    console.log(nftMint.publicKey.toString(), "MINT");
   });
 });

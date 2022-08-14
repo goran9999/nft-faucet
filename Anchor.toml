@@ -7,7 +7,7 @@ token_vesting = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
 url = "https://anchor.projectserum.com"
 
 [provider]
-cluster = "localnet"
+cluster = "https://devnet.genesysgo.net/"
 wallet = "/home/goran/.config/solana/id.json"
 
 

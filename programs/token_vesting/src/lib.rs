@@ -4,7 +4,7 @@ mod error;
 pub mod instructions;
 pub mod state;
 pub mod utils;
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+declare_id!("Hk2DUGyvMCuvs1Sdc7TKuVo1z43Z3i3eqk3WmVviSNPD");
 #[program]
 pub mod token_vesting {
     use anchor_lang::prelude::Context;

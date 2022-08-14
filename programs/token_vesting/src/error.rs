@@ -24,4 +24,6 @@ pub enum VestmenErrors {
     MissingCliffPeriod,
     #[msg("Missing data about dedicated consumers")]
     MissingDedicatedConsumers,
+    #[msg("Wrong token account address")]
+    WrongTokenAccAddress,
 }
