@@ -21,3 +21,6 @@ pub mod claim_vested_nft;
 
 pub use cancel_nft_vestment::*;
 pub mod cancel_nft_vestment;
+
+pub use mint_nft_collection::*;
+pub mod mint_nft_collection;

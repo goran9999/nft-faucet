@@ -26,4 +26,6 @@ pub enum VestmenErrors {
     MissingDedicatedConsumers,
     #[msg("Wrong token account address")]
     WrongTokenAccAddress,
+    #[msg("Missing metadata data")]
+    MissingMetadataData,
 }

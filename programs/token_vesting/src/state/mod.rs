@@ -6,3 +6,6 @@ pub mod escrow_data;
 
 pub use nft_vesting_data::*;
 pub mod nft_vesting_data;
+
+pub use nft_collection_data::*;
+pub mod nft_collection_data;

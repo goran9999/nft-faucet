@@ -34,6 +34,7 @@ import {
   createCreateMetadataAccountV2Instruction,
   createCreateMasterEditionInstruction,
   PROGRAM_ADDRESS,
+  Metadata,
 } from "@metaplex-foundation/mpl-token-metadata";
 
 describe("token_vesting", () => {
@@ -61,9 +62,9 @@ describe("token_vesting", () => {
   //   solVestor = Keypair.generate();
   // });
 
-  beforeEach(function (done) {
-    setTimeout(done, 4000);
-  });
+  // beforeEach(function (done) {
+  //   setTimeout(done, 4000);
+  // });
 
   // it("should mint token to account!", async () => {
   //   const airdropIx = await connection.requestAirdrop(
@@ -1159,139 +1160,112 @@ describe("token_vesting", () => {
   //   );
   // });
   it("should mint nft", async () => {
-    // const nftMint = await createMint(
-    //   connection,
-    //   wallet,
-    //   wallet.publicKey,
-    //   wallet.publicKey,
-    //   0
-    // );
+    const remainingAccounts: AccountMeta[] = [];
 
-    const nftMint = Keypair.generate();
-    const initializeMintIx = createInitializeMintInstruction(
-      nftMint.publicKey,
-      0,
+    const createdMints: PublicKey[] = [];
+    for (let i = 0; i < 2; i++) {
+      const nftMint = await createMint(
+        connection,
+        wallet,
+        wallet.publicKey,
+        wallet.publicKey,
+        0
+      );
+      createdMints.push(nftMint);
+      const [metadataPda] = await PublicKey.findProgramAddress(
+        [Buffer.from("metadata"), PROGRAM_ID.toBuffer(), nftMint.toBuffer()],
+        PROGRAM_ID
+      );
+      const [editionPda] = await PublicKey.findProgramAddress(
+        [
+          Buffer.from("metadata"),
+          PROGRAM_ID.toBuffer(),
+          nftMint.toBuffer(),
+          Buffer.from("edition"),
+        ],
+        PROGRAM_ID
+      );
+
+      const nftAta = await getOrCreateAssociatedTokenAccount(
+        connection,
+        wallet,
+        nftMint,
+        wallet.publicKey
+      );
+      remainingAccounts.push({
+        isSigner: false,
+        isWritable: true,
+        pubkey: nftMint,
+      });
+      remainingAccounts.push({
+        isSigner: false,
+        isWritable: true,
+        pubkey: nftAta.address,
+      });
+      remainingAccounts.push({
+        isSigner: false,
+        isWritable: true,
+        pubkey: metadataPda,
+      });
+      remainingAccounts.push({
+        isSigner: false,
+        isWritable: true,
+        pubkey: editionPda,
+      });
+    }
+    const collectionMint = await createMint(
+      connection,
+      wallet,
       wallet.publicKey,
       wallet.publicKey,
-      TOKEN_PROGRAM_ID
+      0
     );
-
-    const newAccountPubkey = Keypair.generate();
-
-    const createAccount = anchor.web3.SystemProgram.createAccount({
-      fromPubkey: wallet.publicKey,
-      lamports: await getMinimumBalanceForRentExemptAccount(connection),
-      newAccountPubkey: newAccountPubkey.publicKey,
-      programId: anchor.web3.SystemProgram.programId,
-      space: ACCOUNT_SIZE,
-    });
-
-    const initializeTokenAcc = createInitializeAccountInstruction(
-      newAccountPubkey.publicKey,
-      nftMint.publicKey,
-      wallet.publicKey
-    );
-
-    const mintToIx = createMintToInstruction(
-      nftMint.publicKey,
-      newAccountPubkey.publicKey,
-      wallet.publicKey,
-      1
-    );
-
-    console.log(mintToIx.programId.toString(), "MINT TO PROGRAMID");
-
-    mintToIx.programId = TOKEN_PROGRAM_ID;
-
-    console.log(mintToIx.programId.toString(), "MINT TO PROGRAMID");
-
-    const [editionPda] = await PublicKey.findProgramAddress(
+    const [nftCollectionData] = await PublicKey.findProgramAddress(
       [
-        Buffer.from("metadata"),
-        Buffer.from("edition"),
-        nftMint.publicKey.toBuffer(),
+        Buffer.from("nft-minting"),
+        wallet.publicKey.toBuffer(),
+        collectionMint.toBuffer(),
       ],
-      PROGRAM_ID
-    );
-    const [metadataPda] = await PublicKey.findProgramAddress(
-      [
-        Buffer.from("metadata"),
-        nftMint.publicKey.toBuffer(),
-        new PublicKey(PROGRAM_ADDRESS).toBuffer(),
-      ],
-      new PublicKey(PROGRAM_ADDRESS)
+      program.programId
     );
 
-    const createMetadataIx = createCreateMetadataAccountV2Instruction(
-      {
-        metadata: metadataPda,
-        mint: mint,
-        mintAuthority: wallet.publicKey,
-        payer: wallet.publicKey,
-        updateAuthority: wallet.publicKey,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-        systemProgram: anchor.web3.SystemProgram.programId,
-      },
-      {
-        createMetadataAccountArgsV2: {
-          data: {
-            collection: null,
-            creators: [
-              {
-                address: wallet.publicKey,
-                share: 100,
-                verified: true,
-              },
-            ],
-            name: "UNQ #0001",
-            sellerFeeBasisPoints: 15,
-            symbol: "UNQ",
-            uses: { remaining: 1, total: 1, useMethod: 1 },
-            uri: "https://arweave.net/3LIAeaGAex_-REAsrLaTbY8IyB_LAXwkdvC7kN6GUJo",
-          },
-          isMutable: true,
+    const createNftCollectionIx = program.instruction.mintNftCollection(
+      [
+        {
+          name: "TEST MINTING",
+          symbol: "MINT",
+          uri: "https://arweave.net/3LIAeaGAex_-REAsrLaTbY8IyB_LAXwkdvC7kN6GUJo",
         },
+        {
+          name: "DE GOD",
+          symbol: "GGG 999",
+          uri: "https://metadata.degods.com/g/9999.json",
+        },
+      ],
+      {
+        accounts: {
+          collectionAddress: collectionMint,
+          nftAuthority: wallet.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+          nftCollectionData: nftCollectionData,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+          metadataProgram: PROGRAM_ID,
+        },
+        remainingAccounts,
       }
     );
-    console.log(createMetadataIx.programId.toString(), "AAA");
-
-    const createMasterEditionIx = createCreateMasterEditionInstruction(
-      {
-        mintAuthority: wallet.publicKey,
-        mint: mint,
-        payer: wallet.publicKey,
-        updateAuthority: wallet.publicKey,
-        edition: editionPda,
-        metadata: metadataPda,
-      },
-      {
-        createMasterEditionArgs: {
-          maxSupply: 1,
-        },
-      }
-    );
-    console.log(
-      createMasterEditionIx.programId.toString(),
-      "CREATE MASTER EDITION PROGRAMID"
-    );
-
     try {
       await sendTransaction(
         connection,
-        [
-          initializeMintIx,
-          createAccount,
-          initializeTokenAcc,
-          mintToIx,
-          createMetadataIx,
-          createMasterEditionIx,
-        ],
-        [wallet, newAccountPubkey],
+        [createNftCollectionIx],
+        [wallet],
         wallet
       );
     } catch (error) {
       console.log(error);
     }
-    console.log(nftMint.publicKey.toString(), "MINT");
+    createdMints.forEach((mint) => console.log(mint.toString(), "MINT"));
   });
 });

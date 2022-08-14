@@ -4,10 +4,12 @@ mod error;
 pub mod instructions;
 pub mod state;
 pub mod utils;
+use crate::state::NftMetadataData;
 declare_id!("Hk2DUGyvMCuvs1Sdc7TKuVo1z43Z3i3eqk3WmVviSNPD");
 #[program]
 pub mod token_vesting {
     use anchor_lang::prelude::Context;
+    use state::NftMetadataData;
 
     use super::*;
 
@@ -67,5 +69,11 @@ pub mod token_vesting {
     }
     pub fn claim_vested_nft(ctx: Context<ClaimNft>) -> Result<()> {
         return instructions::claim_vested_nft(ctx);
+    }
+    pub fn mint_nft_collection<'a, 'b, 'c, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, MintNftCollection<'info>>,
+        nft_metadata_data: Vec<NftMetadataData>,
+    ) -> Result<()> {
+        return instructions::mint_nft_collection(ctx, nft_metadata_data);
     }
 }
