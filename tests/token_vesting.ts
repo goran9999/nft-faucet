@@ -25,7 +25,7 @@ import {
 import {
   mintMultipleNftsToWallet,
   sendTransaction,
-} from "../programs/token_vesting/src/helpers/transaction";
+} from "../programs/ nft-faucet/src/helpers/transaction";
 import { assert } from "chai";
 import { BN, min } from "bn.js";
 import dayjs from "dayjs";
