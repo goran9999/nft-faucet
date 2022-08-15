@@ -37,6 +37,8 @@ import {
   Metadata,
   createVerifyCollectionInstruction,
 } from "@metaplex-foundation/mpl-token-metadata";
+import axios from "axios";
+import AWS, { RDS } from "aws-sdk";
 
 describe("token_vesting", () => {
   // Configure the client to use the local cluster.
@@ -1231,6 +1233,24 @@ describe("token_vesting", () => {
       program.programId
     );
 
+    const metadataUri = "https://metadata.degods.com/g/9999.json";
+    const res = await axios.get(metadataUri);
+    const s3 = new AWS.S3({
+      accessKeyId: "AKIASJOKVJETVJLISW6M",
+      secretAccessKey: "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",
+    });
+    const data = await res.data;
+
+    const uploadMetadata = await s3
+      .upload({
+        Bucket: "nft-metadata-gg",
+        Key: "asdf",
+        Body: JSON.stringify(data),
+      })
+      .promise();
+
+    const location = uploadMetadata.Location;
+
     const createNftCollectionIx = program.instruction.mintNftCollection(
       [
         {
@@ -1241,7 +1261,7 @@ describe("token_vesting", () => {
         {
           name: "DE GOD",
           symbol: "GGG 999",
-          uri: "https://metadata.degods.com/g/9999.json",
+          uri: location,
         },
       ],
       {
