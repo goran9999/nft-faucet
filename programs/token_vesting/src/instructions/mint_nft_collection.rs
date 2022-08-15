@@ -7,6 +7,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program::invoke;
 use anchor_spl::token::{self, Mint, Token};
 use itertools::Itertools;
+use mpl_token_metadata::state::{Collection, Creator};
 use mpl_token_metadata::{
     instruction::{create_master_edition_v3, create_metadata_accounts_v3},
     ID,
@@ -81,11 +82,18 @@ pub fn mint_nft_collection<'a, 'b, 'c, 'info>(
             metadata_data.name.clone(),
             metadata_data.symbol.clone(),
             metadata_data.uri.clone(),
-            None,
+            Some(vec![Creator {
+                address: ctx.accounts.nft_authority.key(),
+                share: 100,
+                verified: false,
+            }]),
             0,
             true,
             true,
-            None,
+            Some(Collection {
+                key: ctx.accounts.collection_address.key(),
+                verified: false,
+            }),
             None,
             None,
         );

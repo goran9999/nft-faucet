@@ -35,6 +35,7 @@ import {
   createCreateMasterEditionInstruction,
   PROGRAM_ADDRESS,
   Metadata,
+  createVerifyCollectionInstruction,
 } from "@metaplex-foundation/mpl-token-metadata";
 
 describe("token_vesting", () => {
@@ -1220,6 +1221,7 @@ describe("token_vesting", () => {
       wallet.publicKey,
       0
     );
+
     const [nftCollectionData] = await PublicKey.findProgramAddress(
       [
         Buffer.from("nft-minting"),
