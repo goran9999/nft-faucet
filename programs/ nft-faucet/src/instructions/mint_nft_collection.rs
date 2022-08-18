@@ -15,7 +15,7 @@ use mpl_token_metadata::{
 
 #[derive(Accounts)]
 pub struct MintNftCollection<'info> {
-    #[account(init,payer=nft_authority,seeds=[b"nft-minting",nft_authority.key.as_ref(),collection_address.key().as_ref()],bump,space=8+size_of::<NftCollectionData>())]
+    #[account(init_if_needed,payer=nft_authority,seeds=[b"nft-minting",nft_authority.key.as_ref(),collection_address.key().as_ref()],bump,space=8+size_of::<NftCollectionData>())]
     pub nft_collection_data: Account<'info, NftCollectionData>,
     #[account(mut)]
     nft_authority: Signer<'info>,
