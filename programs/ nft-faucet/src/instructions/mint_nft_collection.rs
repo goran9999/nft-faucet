@@ -36,7 +36,7 @@ pub fn mint_nft_collection<'a, 'b, 'c, 'info>(
     let nft_collecton_data = &mut ctx.accounts.nft_collection_data;
     let current_timestamp = Clock::get().unwrap().unix_timestamp;
     nft_collecton_data.mint_timestamp = current_timestamp;
-    nft_collecton_data.number_of_nfts = ctx.remaining_accounts.len().checked_div(2).unwrap() as u32;
+    nft_collecton_data.number_of_nfts = ctx.remaining_accounts.len().checked_div(4).unwrap() as u32;
     nft_collecton_data.collection_address = ctx.accounts.collection_address.key();
 
     require!(

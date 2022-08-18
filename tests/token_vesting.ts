@@ -1,7 +1,7 @@
 import * as anchor from "@project-serum/anchor";
 import { Program } from "@project-serum/anchor";
 import { TokenVesting } from "../target/types/token_vesting";
-import { Keypair, PublicKey, AccountMeta } from "@solana/web3.js";
+import { Keypair, PublicKey, AccountMeta, Transaction } from "@solana/web3.js";
 import { deserialize } from "borsh";
 import {
   Account,
@@ -1216,6 +1216,11 @@ describe("token_vesting", () => {
         pubkey: editionPda,
       });
     }
+
+    const tx = new Transaction({
+      feePayer: wallet.publicKey,
+      recentBlockhash: (await connection.getLatestBlockhash()).blockhash,
+    });
     const collectionMint = await createMint(
       connection,
       wallet,
